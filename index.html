@@ -407,9 +407,14 @@
             }
 
             try {
+                // 버튼을 비활성화해서 연타 방지
+                ledOnBtn.disabled = true;
+                ledOffBtn.disabled = true;
+
                 updateUI('transmitting');
                 let data = new Uint8Array([value]);
 
+                // 블루투스 명령 전송 (await로 끝날 때까지 대기)
                 await ledCharacteristic.writeValue(data);
 
                 if (value === 1) {
@@ -422,6 +427,10 @@
             } catch (error) {
                 console.error('Send failed:', error);
                 alert('전송에 실패했습니다: ' + error.message);
+            } finally {
+                // 성공하든 실패하든 다시 버튼 활성화
+                ledOnBtn.disabled = false;
+                ledOffBtn.disabled = false;
             }
         }
 

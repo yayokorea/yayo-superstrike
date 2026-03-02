@@ -303,6 +303,13 @@
             <span id="statusText">연결 대기 중</span>
         </div>
 
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 5px;">현재 온도</div>
+            <div id="tempDisplay"
+                style="font-size: 2.5rem; font-weight: 800; color: var(--primary); text-shadow: 0 0 15px rgba(0, 210, 255, 0.4);">
+                --.-- °C</div>
+        </div>
+
         <div id="ledIndicator" class="led-indicator"></div>
 
         <button id="connectBtn" class="btn btn-connect">기기 연결하기</button>
@@ -317,9 +324,11 @@
         // Updated Custom UUIDs
         const SERVICE_UUID = '2cfd0a83-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_LED = '2cfd0a84-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_TEMP = '2cfd0a85-f013-4fe2-8dbd-fe3a5f4a64ff';
 
         let bluetoothDevice = null;
         let ledCharacteristic = null;
+        let tempCharacteristic = null;
 
         const connectBtn = document.getElementById('connectBtn');
         const ledOnBtn = document.getElementById('ledOnBtn');
@@ -385,6 +394,11 @@
                 const server = await bluetoothDevice.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 ledCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_LED);
+                tempCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_TEMP);
+
+                // Listen for temperature updates
+                await tempCharacteristic.startNotifications();
+                tempCharacteristic.addEventListener('characteristicvaluechanged', handleTemperatureChange);
 
                 updateUI('connected');
                 console.log('BLE Connected');
@@ -397,7 +411,20 @@
         function onDisconnected() {
             console.log('BLE Disconnected');
             ledCharacteristic = null;
+            if (tempCharacteristic) {
+                tempCharacteristic.removeEventListener('characteristicvaluechanged', handleTemperatureChange);
+                tempCharacteristic = null;
+            }
             updateUI('disconnected');
+        }
+
+        function handleTemperatureChange(event) {
+            const value = event.target.value;
+            // Decode int32 (little endian)
+            const tempEncoded = value.getInt32(0, true);
+            const tempFloat = (tempEncoded / 100).toFixed(2);
+            document.getElementById('tempDisplay').innerText = tempFloat + ' °C';
+            console.log("Temperature updated: " + tempFloat);
         }
 
         async function sendLedCommand(value) {

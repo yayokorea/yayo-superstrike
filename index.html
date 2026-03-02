@@ -3,10 +3,15 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ProMicro BLE Web Control</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+        * {
+            box-sizing: border-box;
+            /* 패딩과 테두리가 너비를 초과하지 않도록 설정 */
+        }
 
         :root {
             --primary: #00d2ff;
@@ -19,17 +24,33 @@
             --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
         }
 
+        /* HTML과 BODY 영역을 뷰포트 크기로 단단히 고정 */
+        html,
         body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            max-width: 100vw;
+            min-height: 100vh;
+            overflow-x: hidden;
+            /* 가로 스크롤 및 빈 공간 완벽 차단 */
             font-family: 'Outfit', sans-serif;
             background: radial-gradient(circle at top left, #1e1e24, var(--bg-dark), #000000);
             color: white;
+            overscroll-behavior-y: none;
+            /* 모바일에서 당겨서 새로고침 되는 현상 방지 */
+        }
+
+        /* 화면을 꽉 채우고 요소들을 중앙에 배치하는 래퍼 */
+        .app-wrapper {
+            position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            width: 100%;
             overflow: hidden;
+            /* 블롭 애니메이션이 래퍼 밖으로 나가는 것을 차단 */
         }
 
         /* Background animated blobs */
@@ -75,7 +96,8 @@
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
             border-radius: 24px;
-            padding: 40px;
+            padding: 40px 30px;
+            /* 모바일 대응: 좌우 패딩을 살짝 줄임 */
             width: 90%;
             max-width: 420px;
             box-shadow: var(--glass-shadow);
@@ -176,9 +198,10 @@
             transition: all 0.3s ease;
             color: white;
             backdrop-filter: blur(5px);
+            /* 모바일에서 탭 하이라이트 깜빡임 제거 */
+            -webkit-tap-highlight-color: transparent;
         }
 
-        /* Hover ripple effect setup */
         .btn::after {
             content: '';
             position: absolute;
@@ -192,9 +215,12 @@
             transition: width 0.4s ease, height 0.4s ease;
         }
 
-        .btn:hover::after {
-            width: 300px;
-            height: 300px;
+        /* 터치(모바일) 환경에서는 hover 효과를 조금 다르게 처리하는 것이 좋으나 기본적으로 유지 */
+        @media (hover: hover) {
+            .btn:hover::after {
+                width: 300px;
+                height: 300px;
+            }
         }
 
         .btn:active {
@@ -235,9 +261,11 @@
             margin: 0;
         }
 
-        .btn-on:hover:not(:disabled) {
-            background: rgba(0, 230, 118, 0.3);
-            box-shadow: 0 0 20px rgba(0, 230, 118, 0.4);
+        @media (hover: hover) {
+            .btn-on:hover:not(:disabled) {
+                background: rgba(0, 230, 118, 0.3);
+                box-shadow: 0 0 20px rgba(0, 230, 118, 0.4);
+            }
         }
 
         .btn-off {
@@ -247,9 +275,11 @@
             margin: 0;
         }
 
-        .btn-off:hover:not(:disabled) {
-            background: rgba(255, 23, 68, 0.3);
-            box-shadow: 0 0 20px rgba(255, 23, 68, 0.4);
+        @media (hover: hover) {
+            .btn-off:hover:not(:disabled) {
+                background: rgba(255, 23, 68, 0.3);
+                box-shadow: 0 0 20px rgba(255, 23, 68, 0.4);
+            }
         }
 
         .led-indicator {
@@ -291,32 +321,34 @@
 
 <body>
 
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+    <div class="app-wrapper">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
 
-    <div class="glass-panel">
-        <h1>ProMicro Control</h1>
-        <p class="subtitle">Web Bluetooth Experience</p>
+        <div class="glass-panel">
+            <h1>ProMicro Control</h1>
+            <p class="subtitle">Web Bluetooth Experience</p>
 
-        <div id="statusBadge" class="status-badge">
-            <div id="statusDot" class="status-dot"></div>
-            <span id="statusText">연결 대기 중</span>
-        </div>
+            <div id="statusBadge" class="status-badge">
+                <div id="statusDot" class="status-dot"></div>
+                <span id="statusText">연결 대기 중</span>
+            </div>
 
-        <div style="text-align: center; margin-bottom: 20px;">
-            <div style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 5px;">현재 온도</div>
-            <div id="tempDisplay"
-                style="font-size: 2.5rem; font-weight: 800; color: var(--primary); text-shadow: 0 0 15px rgba(0, 210, 255, 0.4);">
-                --.-- °C</div>
-        </div>
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 5px;">현재 온도</div>
+                <div id="tempDisplay"
+                    style="font-size: 2.5rem; font-weight: 800; color: var(--primary); text-shadow: 0 0 15px rgba(0, 210, 255, 0.4);">
+                    --.-- °C</div>
+            </div>
 
-        <div id="ledIndicator" class="led-indicator"></div>
+            <div id="ledIndicator" class="led-indicator"></div>
 
-        <button id="connectBtn" class="btn btn-connect">기기 연결하기</button>
+            <button id="connectBtn" class="btn btn-connect">기기 연결하기</button>
 
-        <div class="controls-grid">
-            <button id="ledOnBtn" class="btn btn-on" disabled>LED 켜기</button>
-            <button id="ledOffBtn" class="btn btn-off" disabled>LED 끄기</button>
+            <div class="controls-grid">
+                <button id="ledOnBtn" class="btn btn-on" disabled>LED 켜기</button>
+                <button id="ledOffBtn" class="btn btn-off" disabled>LED 끄기</button>
+            </div>
         </div>
     </div>
 

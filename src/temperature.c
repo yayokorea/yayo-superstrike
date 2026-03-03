@@ -1,8 +1,6 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/sys/printk.h>
-#include <stdlib.h>
 #include <stdint.h>
 
 #include "temperature.h"
@@ -32,8 +30,6 @@ int temperature_read(void)
 	if (ret < 0) {
 		return ret;
 	}
-
-	printk("Temperature: %d.%06d C\n", temp.val1, abs(temp.val2));
 
 	int32_t temp_encoded = (temp.val1 * 100) + (temp.val2 / 10000);
 	ble_notify_temperature(temp_encoded);

@@ -92,6 +92,33 @@ static const struct bt_data sd[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 };
 
+static struct k_work adv_work;
+
+static void start_advertising(void)
+{
+	struct bt_le_adv_param adv_param = {
+		.id = BT_ID_DEFAULT,
+		.sid = 0,
+		.secondary_max_skip = 0,
+		.options = BT_LE_ADV_OPT_CONN, 
+		.interval_min = 1600, // 1000ms (1600 * 0.625ms)
+		.interval_max = 1632, // 1020ms (1632 * 0.625ms)
+		.peer = NULL,
+	};
+
+	int err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (err) {
+		printk("Advertising failed to start (err %d)\n", err);
+	} else {
+		printk("Advertising successfully started\n");
+	}
+}
+
+static void adv_work_handler(struct k_work *work)
+{
+	start_advertising();
+}
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	if (err) {
@@ -104,6 +131,9 @@ static void connected(struct bt_conn *conn, uint8_t err)
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	printk("Disconnected (reason 0x%02x)\n", reason);
+
+	/* 연결이 끊어지면 워크큐를 통해 비동기적으로 광고 재시작 (리소스 정리 시간 확보) */
+	k_work_submit(&adv_work);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -120,28 +150,13 @@ static void bt_ready(int err)
 
 	printk("Bluetooth initialized\n");
 
-	struct bt_le_adv_param adv_param = {
-		.id = BT_ID_DEFAULT,
-		.sid = 0,
-		.secondary_max_skip = 0,
-		.options = BT_LE_ADV_OPT_CONN, 
-		.interval_min = BT_GAP_ADV_FAST_INT_MIN_2,
-		.interval_max = BT_GAP_ADV_FAST_INT_MAX_2,
-		.peer = NULL,
-	};
-
-	err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
-
-	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
-		return;
-	}
-
-	printk("Advertising successfully started\n");
+	start_advertising();
 }
 
 int ble_init(void)
 {
+	k_work_init(&adv_work, adv_work_handler);
+
 	int err = bt_enable(bt_ready);
 	if (err) {
 		printk("Bluetooth init failed (err %d)\n", err);

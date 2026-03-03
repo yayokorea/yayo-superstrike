@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Flash UF2",
+            "type": "shell",
+            "command": "copy build\\firmware\\zephyr\\zephyr.uf2 E:\\",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

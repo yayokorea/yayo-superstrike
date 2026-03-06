@@ -316,6 +316,29 @@
             background: rgba(255, 255, 255, 0.9);
             filter: blur(2px);
         }
+
+        .sensor-card {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 15px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .sensor-label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        .sensor-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
     </style>
 </head>
 
@@ -343,11 +366,26 @@
 
             <div id="ledIndicator" class="led-indicator"></div>
 
+            <div class="sensor-card">
+                <span class="sensor-label">Hall Sensor 1</span>
+                <span id="hall1Display" class="sensor-value">--</span>
+            </div>
+            <div class="sensor-card">
+                <span class="sensor-label">Hall Sensor 2</span>
+                <span id="hall2Display" class="sensor-value">--</span>
+            </div>
+
             <button id="connectBtn" class="btn btn-connect">기기 연결하기</button>
 
             <div class="controls-grid">
                 <button id="ledOnBtn" class="btn btn-on" disabled>LED 켜기</button>
                 <button id="ledOffBtn" class="btn btn-off" disabled>LED 끄기</button>
+                <button id="vibShortBtn" class="btn"
+                    style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff;"
+                    disabled>짧은 진동</button>
+                <button id="vibLongBtn" class="btn"
+                    style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff;"
+                    disabled>긴 진동</button>
             </div>
         </div>
     </div>
@@ -357,14 +395,22 @@
         const SERVICE_UUID = '2cfd0a83-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_LED = '2cfd0a84-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_TEMP = '2cfd0a85-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_MOTOR = '2cfd0a86-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_HALL1 = '2cfd0a87-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_HALL2 = '2cfd0a88-f013-4fe2-8dbd-fe3a5f4a64ff';
 
         let bluetoothDevice = null;
         let ledCharacteristic = null;
         let tempCharacteristic = null;
+        let motorCharacteristic = null;
+        let hall1Characteristic = null;
+        let hall2Characteristic = null;
 
         const connectBtn = document.getElementById('connectBtn');
         const ledOnBtn = document.getElementById('ledOnBtn');
         const ledOffBtn = document.getElementById('ledOffBtn');
+        const vibShortBtn = document.getElementById('vibShortBtn');
+        const vibLongBtn = document.getElementById('vibLongBtn');
         const statusText = document.getElementById('statusText');
         const statusBadge = document.getElementById('statusBadge');
         const ledIndicator = document.getElementById('ledIndicator');
@@ -379,6 +425,8 @@
 
                     ledOnBtn.disabled = true;
                     ledOffBtn.disabled = true;
+                    vibShortBtn.disabled = true;
+                    vibLongBtn.disabled = true;
                     ledIndicator.classList.remove('on');
                     break;
                 case 'connecting':
@@ -393,6 +441,8 @@
 
                     ledOnBtn.disabled = false;
                     ledOffBtn.disabled = false;
+                    vibShortBtn.disabled = false;
+                    vibLongBtn.disabled = false;
                     break;
                 case 'transmitting':
                     statusBadge.className = 'status-badge connected active';
@@ -427,10 +477,25 @@
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 ledCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_LED);
                 tempCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_TEMP);
+                motorCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_MOTOR);
+                hall1Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL1);
+                hall2Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL2);
 
-                // Listen for temperature updates
+                // Listen for notifications
                 await tempCharacteristic.startNotifications();
                 tempCharacteristic.addEventListener('characteristicvaluechanged', handleTemperatureChange);
+
+                await hall1Characteristic.startNotifications();
+                hall1Characteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    const val = e.target.value.getInt32(0, true);
+                    document.getElementById('hall1Display').innerText = val;
+                });
+
+                await hall2Characteristic.startNotifications();
+                hall2Characteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    const val = e.target.value.getInt32(0, true);
+                    document.getElementById('hall2Display').innerText = val;
+                });
 
                 updateUI('connected');
                 console.log('BLE Connected');
@@ -443,10 +508,13 @@
         function onDisconnected() {
             console.log('BLE Disconnected');
             ledCharacteristic = null;
+            motorCharacteristic = null;
             if (tempCharacteristic) {
                 tempCharacteristic.removeEventListener('characteristicvaluechanged', handleTemperatureChange);
                 tempCharacteristic = null;
             }
+            if (hall1Characteristic) hall1Characteristic = null;
+            if (hall2Characteristic) hall2Characteristic = null;
             updateUI('disconnected');
         }
 
@@ -493,9 +561,34 @@
             }
         }
 
+        async function playVibration(intensity, duration) {
+            if (!motorCharacteristic) return;
+            try {
+                vibShortBtn.disabled = true;
+                vibLongBtn.disabled = true;
+                updateUI('transmitting');
+                await motorCharacteristic.writeValue(new Uint8Array([intensity]));
+                setTimeout(async () => {
+                    if (motorCharacteristic) {
+                        try {
+                            await motorCharacteristic.writeValue(new Uint8Array([0]));
+                        } catch (err) { }
+                    }
+                    vibShortBtn.disabled = false;
+                    vibLongBtn.disabled = false;
+                }, duration);
+            } catch (error) {
+                console.error('Vibration failed:', error);
+                vibShortBtn.disabled = false;
+                vibLongBtn.disabled = false;
+            }
+        }
+
         connectBtn.addEventListener('click', toggleConnection);
         ledOnBtn.addEventListener('click', () => sendLedCommand(1));
         ledOffBtn.addEventListener('click', () => sendLedCommand(0));
+        vibShortBtn.addEventListener('click', () => playVibration(200, 50));
+        vibLongBtn.addEventListener('click', () => playVibration(200, 300));
     </script>
 </body>
 

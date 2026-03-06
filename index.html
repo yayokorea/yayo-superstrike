@@ -386,6 +386,12 @@
                 <button id="vibLongBtn" class="btn"
                     style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff;"
                     disabled>긴 진동</button>
+                <button id="switchOnBtn" class="btn" disabled
+                    style="background: rgba(255, 152, 0, 0.2); border: 1px solid rgba(255, 152, 0, 0.4); color: #ffb74d;">스위치
+                    누르기</button>
+                <button id="switchOffBtn" class="btn" disabled
+                    style="background: rgba(158, 158, 158, 0.2); border: 1px solid rgba(158, 158, 158, 0.4); color: #e0e0e0;">스위치
+                    떼기</button>
             </div>
         </div>
     </div>
@@ -398,6 +404,7 @@
         const CHARACTERISTIC_UUID_MOTOR = '2cfd0a86-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_HALL1 = '2cfd0a87-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_HALL2 = '2cfd0a88-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_SWITCH = '2cfd0a89-f013-4fe2-8dbd-fe3a5f4a64ff';
 
         let bluetoothDevice = null;
         let ledCharacteristic = null;
@@ -405,12 +412,15 @@
         let motorCharacteristic = null;
         let hall1Characteristic = null;
         let hall2Characteristic = null;
+        let switchCharacteristic = null;
 
         const connectBtn = document.getElementById('connectBtn');
         const ledOnBtn = document.getElementById('ledOnBtn');
         const ledOffBtn = document.getElementById('ledOffBtn');
         const vibShortBtn = document.getElementById('vibShortBtn');
         const vibLongBtn = document.getElementById('vibLongBtn');
+        const switchOnBtn = document.getElementById('switchOnBtn');
+        const switchOffBtn = document.getElementById('switchOffBtn');
         const statusText = document.getElementById('statusText');
         const statusBadge = document.getElementById('statusBadge');
         const ledIndicator = document.getElementById('ledIndicator');
@@ -427,6 +437,8 @@
                     ledOffBtn.disabled = true;
                     vibShortBtn.disabled = true;
                     vibLongBtn.disabled = true;
+                    switchOnBtn.disabled = true;
+                    switchOffBtn.disabled = true;
                     ledIndicator.classList.remove('on');
                     break;
                 case 'connecting':
@@ -443,6 +455,8 @@
                     ledOffBtn.disabled = false;
                     vibShortBtn.disabled = false;
                     vibLongBtn.disabled = false;
+                    switchOnBtn.disabled = false;
+                    switchOffBtn.disabled = false;
                     break;
                 case 'transmitting':
                     statusBadge.className = 'status-badge connected active';
@@ -480,6 +494,7 @@
                 motorCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_MOTOR);
                 hall1Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL1);
                 hall2Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL2);
+                switchCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_SWITCH);
 
                 // Listen for notifications
                 await tempCharacteristic.startNotifications();
@@ -515,6 +530,7 @@
             }
             if (hall1Characteristic) hall1Characteristic = null;
             if (hall2Characteristic) hall2Characteristic = null;
+            if (switchCharacteristic) switchCharacteristic = null;
             updateUI('disconnected');
         }
 
@@ -584,11 +600,28 @@
             }
         }
 
+        async function sendSwitchCommand(value) {
+            if (!switchCharacteristic) return;
+            try {
+                switchOnBtn.disabled = true;
+                switchOffBtn.disabled = true;
+                updateUI('transmitting');
+                await switchCharacteristic.writeValue(new Uint8Array([value]));
+            } catch (error) {
+                console.error('Switch failed:', error);
+            } finally {
+                switchOnBtn.disabled = false;
+                switchOffBtn.disabled = false;
+            }
+        }
+
         connectBtn.addEventListener('click', toggleConnection);
         ledOnBtn.addEventListener('click', () => sendLedCommand(1));
         ledOffBtn.addEventListener('click', () => sendLedCommand(0));
         vibShortBtn.addEventListener('click', () => playVibration(200, 50));
         vibLongBtn.addEventListener('click', () => playVibration(200, 300));
+        switchOnBtn.addEventListener('click', () => sendSwitchCommand(1));
+        switchOffBtn.addEventListener('click', () => sendSwitchCommand(0));
     </script>
 </body>
 

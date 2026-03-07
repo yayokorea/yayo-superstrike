@@ -36,6 +36,7 @@ int main(void)
 	while (1) {
 		temperature_read();
 		sensor_read_hall(&hall1, &hall2);
+		sensor_calibration_update(hall1, hall2);
 		if (sensor_should_trigger_left_click(hall1)) {
 			mouse_left_click();
 		}

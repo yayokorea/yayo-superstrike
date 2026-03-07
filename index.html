@@ -375,6 +375,14 @@
                 <span id="hall2Display" class="sensor-value">--</span>
             </div>
 
+            <div class="sensor-card" style="display:block;">
+                <div class="sensor-label" style="margin-bottom: 10px;">Hall Calibration</div>
+                <div id="calibrationSummary" style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.5;">
+                    Hall1 L: idle -, press -, th -, rel -<br>
+                    Hall2 R: idle -, press -, th -, rel -
+                </div>
+            </div>
+
             <button id="connectBtn" class="btn btn-connect">기기 연결하기</button>
 
             <div class="controls-grid">
@@ -393,6 +401,19 @@
                     style="background: rgba(158, 158, 158, 0.2); border: 1px solid rgba(158, 158, 158, 0.4); color: #e0e0e0;">스위치
                     떼기</button>
             </div>
+            <div class="controls-grid" style="margin-top: 15px;">
+                <button id="calHall1IdleBtn" class="btn" disabled
+                    style="background: rgba(56, 189, 248, 0.18); border: 1px solid rgba(56, 189, 248, 0.4); color: #bae6fd;">H1 Idle</button>
+                <button id="calHall1PressBtn" class="btn" disabled
+                    style="background: rgba(14, 165, 233, 0.18); border: 1px solid rgba(14, 165, 233, 0.4); color: #7dd3fc;">H1 Press</button>
+                <button id="calHall2IdleBtn" class="btn" disabled
+                    style="background: rgba(251, 146, 60, 0.18); border: 1px solid rgba(251, 146, 60, 0.4); color: #fed7aa;">H2 Idle</button>
+                <button id="calHall2PressBtn" class="btn" disabled
+                    style="background: rgba(249, 115, 22, 0.18); border: 1px solid rgba(249, 115, 22, 0.4); color: #fdba74;">H2 Press</button>
+            </div>
+            <button id="refreshCalBtn" class="btn"
+                style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #fff; margin-top: 15px;"
+                disabled>캘리 상태 읽기</button>
         </div>
     </div>
 
@@ -405,6 +426,13 @@
         const CHARACTERISTIC_UUID_HALL1 = '2cfd0a87-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_HALL2 = '2cfd0a88-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_SWITCH = '2cfd0a89-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_CAL_STATUS = '2cfd0a8a-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_CAL_COMMAND = '2cfd0a8b-f013-4fe2-8dbd-fe3a5f4a64ff';
+
+        const CAL_CMD_HALL1_IDLE = 1;
+        const CAL_CMD_HALL1_PRESS = 2;
+        const CAL_CMD_HALL2_IDLE = 3;
+        const CAL_CMD_HALL2_PRESS = 4;
 
         let bluetoothDevice = null;
         let ledCharacteristic = null;
@@ -413,6 +441,8 @@
         let hall1Characteristic = null;
         let hall2Characteristic = null;
         let switchCharacteristic = null;
+        let calibrationStatusCharacteristic = null;
+        let calibrationCommandCharacteristic = null;
 
         const connectBtn = document.getElementById('connectBtn');
         const ledOnBtn = document.getElementById('ledOnBtn');
@@ -421,6 +451,12 @@
         const vibLongBtn = document.getElementById('vibLongBtn');
         const switchOnBtn = document.getElementById('switchOnBtn');
         const switchOffBtn = document.getElementById('switchOffBtn');
+        const calHall1IdleBtn = document.getElementById('calHall1IdleBtn');
+        const calHall1PressBtn = document.getElementById('calHall1PressBtn');
+        const calHall2IdleBtn = document.getElementById('calHall2IdleBtn');
+        const calHall2PressBtn = document.getElementById('calHall2PressBtn');
+        const refreshCalBtn = document.getElementById('refreshCalBtn');
+        const calibrationSummary = document.getElementById('calibrationSummary');
         const statusText = document.getElementById('statusText');
         const statusBadge = document.getElementById('statusBadge');
         const ledIndicator = document.getElementById('ledIndicator');
@@ -439,6 +475,11 @@
                     vibLongBtn.disabled = true;
                     switchOnBtn.disabled = true;
                     switchOffBtn.disabled = true;
+                    calHall1IdleBtn.disabled = true;
+                    calHall1PressBtn.disabled = true;
+                    calHall2IdleBtn.disabled = true;
+                    calHall2PressBtn.disabled = true;
+                    refreshCalBtn.disabled = true;
                     ledIndicator.classList.remove('on');
                     break;
                 case 'connecting':
@@ -457,6 +498,11 @@
                     vibLongBtn.disabled = false;
                     switchOnBtn.disabled = false;
                     switchOffBtn.disabled = false;
+                    calHall1IdleBtn.disabled = false;
+                    calHall1PressBtn.disabled = false;
+                    calHall2IdleBtn.disabled = false;
+                    calHall2PressBtn.disabled = false;
+                    refreshCalBtn.disabled = false;
                     break;
                 case 'transmitting':
                     statusBadge.className = 'status-badge connected active';
@@ -495,6 +541,8 @@
                 hall1Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL1);
                 hall2Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL2);
                 switchCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_SWITCH);
+                calibrationStatusCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_CAL_STATUS);
+                calibrationCommandCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_CAL_COMMAND);
 
                 // Listen for notifications
                 await tempCharacteristic.startNotifications();
@@ -513,6 +561,7 @@
                 });
 
                 updateUI('connected');
+                await refreshCalibrationStatus();
                 console.log('BLE Connected');
             } catch (error) {
                 console.error('Connection failed:', error);
@@ -531,6 +580,8 @@
             if (hall1Characteristic) hall1Characteristic = null;
             if (hall2Characteristic) hall2Characteristic = null;
             if (switchCharacteristic) switchCharacteristic = null;
+            if (calibrationStatusCharacteristic) calibrationStatusCharacteristic = null;
+            if (calibrationCommandCharacteristic) calibrationCommandCharacteristic = null;
             updateUI('disconnected');
         }
 
@@ -541,6 +592,62 @@
             const tempFloat = (tempEncoded / 100).toFixed(2);
             document.getElementById('tempDisplay').innerText = tempFloat + ' °C';
             console.log("Temperature updated: " + tempFloat);
+        }
+
+        function updateCalibrationSummary(status) {
+            calibrationSummary.innerHTML =
+                `Hall1 L: idle ${status.hall1Idle}, press ${status.hall1Press}, th ${status.hall1Threshold}, rel ${status.hall1Release}${status.hall1Ready ? ' [ok]' : ''}<br>` +
+                `Hall2 R: idle ${status.hall2Idle}, press ${status.hall2Press}, th ${status.hall2Threshold}, rel ${status.hall2Release}${status.hall2Ready ? ' [ok]' : ''}<br>` +
+                `active ${status.activeCommand}, samples ${status.sampleCount}/8`;
+        }
+
+        async function refreshCalibrationStatus() {
+            if (!calibrationStatusCharacteristic) return;
+
+            const value = await calibrationStatusCharacteristic.readValue();
+            const status = {
+                hall1Idle: value.getInt32(0, true),
+                hall1Press: value.getInt32(4, true),
+                hall1Threshold: value.getInt32(8, true),
+                hall1Release: value.getInt32(12, true),
+                hall2Idle: value.getInt32(16, true),
+                hall2Press: value.getInt32(20, true),
+                hall2Threshold: value.getInt32(24, true),
+                hall2Release: value.getInt32(28, true),
+                activeCommand: value.getUint8(32),
+                sampleCount: value.getUint8(33),
+                hall1Ready: value.getUint8(34) === 1,
+                hall2Ready: value.getUint8(35) === 1
+            };
+
+            updateCalibrationSummary(status);
+        }
+
+        async function sendCalibrationCommand(command) {
+            if (!calibrationCommandCharacteristic) return;
+
+            try {
+                calHall1IdleBtn.disabled = true;
+                calHall1PressBtn.disabled = true;
+                calHall2IdleBtn.disabled = true;
+                calHall2PressBtn.disabled = true;
+                refreshCalBtn.disabled = true;
+                updateUI('transmitting');
+                await calibrationCommandCharacteristic.writeValue(new Uint8Array([command]));
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await refreshCalibrationStatus();
+            } catch (error) {
+                console.error('Calibration failed:', error);
+                alert('캘리 명령 실패: ' + error.message);
+            } finally {
+                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                    calHall1IdleBtn.disabled = false;
+                    calHall1PressBtn.disabled = false;
+                    calHall2IdleBtn.disabled = false;
+                    calHall2PressBtn.disabled = false;
+                    refreshCalBtn.disabled = false;
+                }
+            }
         }
 
         async function sendLedCommand(value) {
@@ -622,6 +729,11 @@
         vibLongBtn.addEventListener('click', () => playVibration(200, 300));
         switchOnBtn.addEventListener('click', () => sendSwitchCommand(1));
         switchOffBtn.addEventListener('click', () => sendSwitchCommand(0));
+        calHall1IdleBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL1_IDLE));
+        calHall1PressBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL1_PRESS));
+        calHall2IdleBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL2_IDLE));
+        calHall2PressBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL2_PRESS));
+        refreshCalBtn.addEventListener('click', refreshCalibrationStatus);
     </script>
 </body>
 

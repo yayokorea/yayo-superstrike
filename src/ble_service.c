@@ -2,6 +2,7 @@
 
 #include "led.h"
 #include "motor.h"
+#include "sensor.h"
 
 #include <stdbool.h>
 #include <zephyr/bluetooth/conn.h>
@@ -43,6 +44,16 @@
 #define BT_UUID_CUSTOM_CHAR_SWITCH_VAL \
     BT_UUID_128_ENCODE(0x2cfd0a89, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
 #define BT_UUID_CUSTOM_CHAR_SWITCH BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_SWITCH_VAL)
+
+/* Custom Characteristic UUID for Calibration Status: 2cfd0a8a-f013-4fe2-8dbd-fe3a5f4a64ff */
+#define BT_UUID_CUSTOM_CHAR_CAL_STATUS_VAL \
+    BT_UUID_128_ENCODE(0x2cfd0a8a, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
+#define BT_UUID_CUSTOM_CHAR_CAL_STATUS BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_CAL_STATUS_VAL)
+
+/* Custom Characteristic UUID for Calibration Command: 2cfd0a8b-f013-4fe2-8dbd-fe3a5f4a64ff */
+#define BT_UUID_CUSTOM_CHAR_CAL_COMMAND_VAL \
+    BT_UUID_128_ENCODE(0x2cfd0a8b, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
+#define BT_UUID_CUSTOM_CHAR_CAL_COMMAND BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_CAL_COMMAND_VAL)
 
 enum {
     TEMP_NOTIFY_ATTR_INDEX = 4,
@@ -139,6 +150,36 @@ static ssize_t write_switch(struct bt_conn *conn, const struct bt_gatt_attr *att
     return len;
 }
 
+static ssize_t read_calibration_status(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                       void *buf, uint16_t len, uint16_t offset)
+{
+    struct sensor_calibration_status status;
+
+    ARG_UNUSED(attr);
+    sensor_get_calibration_status(&status);
+
+    return bt_gatt_attr_read(conn, attr, buf, len, offset, &status, sizeof(status));
+}
+
+static ssize_t write_calibration_command(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                         const void *buf, uint16_t len, uint16_t offset,
+                                         uint8_t flags)
+{
+    ARG_UNUSED(conn);
+    ARG_UNUSED(attr);
+    ARG_UNUSED(offset);
+    ARG_UNUSED(flags);
+
+    const uint8_t *value = buf;
+
+    if ((len < 1U) || (sensor_start_calibration(value[0]) != 0)) {
+        return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+    }
+
+    printk("Calibration command: %u\n", value[0]);
+    return len;
+}
+
 BT_GATT_SERVICE_DEFINE(custom_srv,
     BT_GATT_PRIMARY_SERVICE(BT_UUID_CUSTOM_SERV),
     BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_LED,
@@ -171,6 +212,14 @@ BT_GATT_SERVICE_DEFINE(custom_srv,
                            BT_GATT_CHRC_WRITE,
                            BT_GATT_PERM_WRITE,
                            NULL, write_switch, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_CAL_STATUS,
+                           BT_GATT_CHRC_READ,
+                           BT_GATT_PERM_READ,
+                           read_calibration_status, NULL, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_CAL_COMMAND,
+                           BT_GATT_CHRC_WRITE,
+                           BT_GATT_PERM_WRITE,
+                           NULL, write_calibration_command, NULL),
 );
 
 int ble_service_notify_hall_sensors(int32_t hall1, int32_t hall2)

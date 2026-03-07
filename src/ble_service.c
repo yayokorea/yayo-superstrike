@@ -15,9 +15,9 @@
 #define BT_UUID_CUSTOM_SERV BT_UUID_DECLARE_128(BT_UUID_CUSTOM_SERV_VAL)
 
 /* Custom Characteristic UUID: 2cfd0a84-f013-4fe2-8dbd-fe3a5f4a64ff */
-#define BT_UUID_CUSTOM_CHAR_VAL \
+#define BT_UUID_CUSTOM_CHAR_LED_VAL \
     BT_UUID_128_ENCODE(0x2cfd0a84, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
-#define BT_UUID_CUSTOM_CHAR BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_VAL)
+#define BT_UUID_CUSTOM_CHAR_LED BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_LED_VAL)
 
 /* Custom Characteristic UUID for Temp: 2cfd0a85-f013-4fe2-8dbd-fe3a5f4a64ff */
 #define BT_UUID_CUSTOM_CHAR_TEMP_VAL \
@@ -133,7 +133,7 @@ static ssize_t write_switch(struct bt_conn *conn, const struct bt_gatt_attr *att
     const uint8_t *value = buf;
 
     if (len >= 1U) {
-        mouse_switch_set(value[0] == 1U);
+        mouse_right_switch_set(value[0] == 1U);
     }
 
     return len;
@@ -141,7 +141,7 @@ static ssize_t write_switch(struct bt_conn *conn, const struct bt_gatt_attr *att
 
 BT_GATT_SERVICE_DEFINE(custom_srv,
     BT_GATT_PRIMARY_SERVICE(BT_UUID_CUSTOM_SERV),
-    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR,
+    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_LED,
                            BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
                            BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
                            read_led, write_led, NULL),

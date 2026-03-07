@@ -36,6 +36,13 @@ int main(void)
 	while (1) {
 		temperature_read();
 		sensor_read_hall(&hall1, &hall2);
+		if (sensor_should_trigger_left_click(hall1)) {
+			mouse_left_click();
+		}
+		if (sensor_should_trigger_right_click(hall2)) {
+			mouse_right_click();
+		}
+		mouse_switch_process();
 		ble_notify_hall_sensors(hall1, hall2);
 
 		if (loop_count % 10 == 0) { // Print every 500ms (50ms * 10) to avoid spam

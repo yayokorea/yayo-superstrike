@@ -8,11 +8,14 @@
 #define STBY_NODE DT_NODELABEL(gpio0)
 #define STBY_PIN 17
 #define MOUSE_SWITCH_NODE DT_NODELABEL(gpio1)
-#define MOUSE_SWITCH_PIN 11
+#define MOUSE_RIGHT_SWITCH_PIN 11
+#define MOUSE_LEFT_SWITCH_PIN 13
 
 static const struct device *gpio0_dev;
 static const struct device *gpio1_dev;
 static const struct device *pwm_dev;
+static int64_t left_click_release_at;
+static int64_t right_click_release_at;
 
 void motor_init(void)
 {
@@ -28,8 +31,9 @@ void motor_init(void)
     if (!device_is_ready(gpio1_dev)) {
         printk("GPIO device (gpio1) not ready!\n");
     } else {
-        gpio_pin_configure(gpio1_dev, MOUSE_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
-        printk("Mouse switch initialized on P1.11\n");
+        gpio_pin_configure(gpio1_dev, MOUSE_RIGHT_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
+        gpio_pin_configure(gpio1_dev, MOUSE_LEFT_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
+        printk("Mouse switches initialized on P1.11(right), P1.13(left)\n");
     }
 
     pwm_dev = DEVICE_DT_GET(DT_NODELABEL(pwm0));
@@ -73,11 +77,47 @@ void motor_set_vibration(int intensity)
     }
 }
 
-void mouse_switch_set(bool state)
+void mouse_left_switch_set(bool state)
 {
     if (!gpio1_dev || !device_is_ready(gpio1_dev)) {
         return;
     }
-    gpio_pin_set(gpio1_dev, MOUSE_SWITCH_PIN, state ? 1 : 0);
-    printk("Mouse switch (P1.11) %s\n", state ? "ON" : "OFF");
+    gpio_pin_set(gpio1_dev, MOUSE_LEFT_SWITCH_PIN, state ? 1 : 0);
+    printk("Mouse left switch (P1.13) %s\n", state ? "ON" : "OFF");
+}
+
+void mouse_right_switch_set(bool state)
+{
+    if (!gpio1_dev || !device_is_ready(gpio1_dev)) {
+        return;
+    }
+    gpio_pin_set(gpio1_dev, MOUSE_RIGHT_SWITCH_PIN, state ? 1 : 0);
+    printk("Mouse right switch (P1.11) %s\n", state ? "ON" : "OFF");
+}
+
+void mouse_left_click(void)
+{
+    mouse_left_switch_set(true);
+    left_click_release_at = k_uptime_get() + 20;
+}
+
+void mouse_right_click(void)
+{
+    mouse_right_switch_set(true);
+    right_click_release_at = k_uptime_get() + 20;
+}
+
+void mouse_switch_process(void)
+{
+    if ((left_click_release_at != 0) &&
+        (k_uptime_get() >= left_click_release_at)) {
+        mouse_left_switch_set(false);
+        left_click_release_at = 0;
+    }
+
+    if ((right_click_release_at != 0) &&
+        (k_uptime_get() >= right_click_release_at)) {
+        mouse_right_switch_set(false);
+        right_click_release_at = 0;
+    }
 }

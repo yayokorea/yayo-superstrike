@@ -5,9 +5,13 @@
 #include <hal/nrf_saadc.h>
 
 #define ADC_NODE DT_NODELABEL(adc)
+#define HALL_CLICK_THRESHOLD 2600
+#define HALL_RELEASE_THRESHOLD 2400
 
 static const struct device *adc_dev;
 static int16_t sample_buffer[2];
+static bool hall1_click_latched;
+static bool hall2_click_latched;
 
 static const struct adc_channel_cfg vdt_cfg1 = {
     .gain             = ADC_GAIN_1_6,
@@ -59,4 +63,31 @@ void sensor_read_hall(int32_t *hall1, int32_t *hall2)
         *hall1 = -1;
         *hall2 = -1;
     }
+}
+
+static bool sensor_should_trigger_channel_click(int32_t hall_value, bool *latched)
+{
+    bool hall_active = hall_value >= HALL_CLICK_THRESHOLD;
+    bool hall_released = hall_value < HALL_RELEASE_THRESHOLD;
+
+    if (!(*latched) && hall_active) {
+        *latched = true;
+        return true;
+    }
+
+    if (*latched && hall_released) {
+        *latched = false;
+    }
+
+    return false;
+}
+
+bool sensor_should_trigger_left_click(int32_t hall1)
+{
+    return sensor_should_trigger_channel_click(hall1, &hall1_click_latched);
+}
+
+bool sensor_should_trigger_right_click(int32_t hall2)
+{
+    return sensor_should_trigger_channel_click(hall2, &hall2_click_latched);
 }

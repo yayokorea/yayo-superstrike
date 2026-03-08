@@ -1,0 +1,24 @@
+bootloader:
+  address: 0x0
+  region: flash_primary
+  size: 0x1000
+
+softdevice:
+  address: 0x1000
+  region: flash_primary
+  size: 0x25000
+
+app:
+  address: 0x26000
+  region: flash_primary
+  size: 0xc6000
+
+nvs_storage:
+  address: 0xec000
+  region: flash_primary
+  size: 0x8000
+
+uf2:
+  address: 0xf4000
+  region: flash_primary
+  size: 0xc000

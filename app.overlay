@@ -40,6 +40,42 @@
     regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
 };
 
-&uicr {
-    nfct-pins-as-gpios;
+/ {
+    chosen {
+        zephyr,code-partition = &app_partition;
+    };
+};
+
+&flash0 {
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        /* SoftDevice 영역 (S140 v6.1.1) */
+        sd_partition: partition@0 {
+            label = "softdevice";
+            reg = <0x00000000 0x00026000>;
+            read-only;
+        };
+
+        /* Application */
+        app_partition: partition@26000 {
+            label = "app";
+            reg = <0x00026000 0x000C6000>;
+        };
+
+        /* NVS storage */
+        storage_partition: partition@ec000 {
+            label = "storage";
+            reg = <0x000EC000 0x00008000>;
+        };
+
+        /* UF2 bootloader */
+        boot_partition: partition@f4000 {
+            label = "uf2";
+            reg = <0x000F4000 0x0000C000>;
+            read-only;
+        };
+    };
 };

@@ -1,5 +1,6 @@
 #include "ble_service.h"
 
+#include "dfu.h"
 #include "led.h"
 #include "motor.h"
 #include "sensor.h"
@@ -8,6 +9,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
 /* Custom Service UUID: 2cfd0a83-f013-4fe2-8dbd-fe3a5f4a64ff */
@@ -55,15 +57,30 @@
     BT_UUID_128_ENCODE(0x2cfd0a8b, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
 #define BT_UUID_CUSTOM_CHAR_CAL_COMMAND BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_CAL_COMMAND_VAL)
 
+/* Custom Characteristic UUID for System Control: 2cfd0a8c-f013-4fe2-8dbd-fe3a5f4a64ff */
+#define BT_UUID_CUSTOM_CHAR_SYSTEM_CONTROL_VAL \
+    BT_UUID_128_ENCODE(0x2cfd0a8c, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
+#define BT_UUID_CUSTOM_CHAR_SYSTEM_CONTROL BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_SYSTEM_CONTROL_VAL)
+
 enum {
     TEMP_NOTIFY_ATTR_INDEX = 4,
     HALL1_NOTIFY_ATTR_INDEX = 9,
     HALL2_NOTIFY_ATTR_INDEX = 12,
 };
 
+enum system_control_command {
+    SYSTEM_CONTROL_CMD_REBOOT = 1,
+    SYSTEM_CONTROL_CMD_DFU = 2,
+    SYSTEM_CONTROL_CMD_OTA = 3,
+};
+
 static bool temp_notify_enabled;
 static bool hall1_notify_enabled;
 static bool hall2_notify_enabled;
+static uint8_t pending_system_command;
+
+static void system_control_work_handler(struct k_work *work);
+K_WORK_DELAYABLE_DEFINE(system_control_work, system_control_work_handler);
 
 static void temp_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
@@ -83,6 +100,28 @@ static void hall2_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t valu
 {
     ARG_UNUSED(attr);
     hall2_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+}
+
+static void system_control_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+
+    switch (pending_system_command) {
+    case SYSTEM_CONTROL_CMD_REBOOT:
+        printk("System control: reboot\n");
+        dfu_reboot();
+        break;
+    case SYSTEM_CONTROL_CMD_DFU:
+        printk("System control: dfu\n");
+        dfu_reboot_to_bootloader();
+        break;
+    case SYSTEM_CONTROL_CMD_OTA:
+        printk("System control: ota\n");
+        dfu_reboot_to_ota();
+        break;
+    default:
+        break;
+    }
 }
 
 static ssize_t write_motor(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -180,6 +219,33 @@ static ssize_t write_calibration_command(struct bt_conn *conn, const struct bt_g
     return len;
 }
 
+static ssize_t write_system_control(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                    const void *buf, uint16_t len, uint16_t offset,
+                                    uint8_t flags)
+{
+    ARG_UNUSED(conn);
+    ARG_UNUSED(attr);
+    ARG_UNUSED(offset);
+    ARG_UNUSED(flags);
+
+    const uint8_t *value = buf;
+
+    if (len < 1U) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+    }
+
+    switch (value[0]) {
+    case SYSTEM_CONTROL_CMD_REBOOT:
+    case SYSTEM_CONTROL_CMD_DFU:
+    case SYSTEM_CONTROL_CMD_OTA:
+        pending_system_command = value[0];
+        k_work_schedule(&system_control_work, K_MSEC(100));
+        return len;
+    default:
+        return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+    }
+}
+
 BT_GATT_SERVICE_DEFINE(custom_srv,
     BT_GATT_PRIMARY_SERVICE(BT_UUID_CUSTOM_SERV),
     BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_LED,
@@ -220,6 +286,10 @@ BT_GATT_SERVICE_DEFINE(custom_srv,
                            BT_GATT_CHRC_WRITE,
                            BT_GATT_PERM_WRITE,
                            NULL, write_calibration_command, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_SYSTEM_CONTROL,
+                           BT_GATT_CHRC_WRITE,
+                           BT_GATT_PERM_WRITE,
+                           NULL, write_system_control, NULL),
 );
 
 int ble_service_notify_hall_sensors(int32_t hall1, int32_t hall2)

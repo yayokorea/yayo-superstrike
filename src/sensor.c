@@ -57,7 +57,7 @@ struct sensor_calibration_flash_data {
 };
 
 static const struct adc_channel_cfg vdt_cfg1 = {
-    .gain             = ADC_GAIN_1_6,
+    .gain             = ADC_GAIN_1_6, 
     .reference        = ADC_REF_INTERNAL, // 0.6V
     .acquisition_time = ADC_ACQ_TIME_DEFAULT,
     .channel_id       = 0, // AIN0 (P0.02)

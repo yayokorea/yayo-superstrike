@@ -464,6 +464,13 @@
             margin-bottom: 24px;
         }
 
+        .system-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
         /* Calibration Status view */
         .cal-status {
             background: rgba(0, 0, 0, 0.4);
@@ -542,6 +549,12 @@
                 <button id="switchOnBtn" class="btn btn-orange" disabled>스위치 누르기</button>
                 <button id="switchOffBtn" class="btn btn-gray" disabled>스위치 떼기</button>
             </div>
+
+            <div class="system-grid">
+                <button id="rebootBtn" class="btn btn-outline" disabled>Reboot</button>
+                <button id="dfuBtn" class="btn btn-outline" disabled>DFU</button>
+                <button id="otaBtn" class="btn btn-outline" disabled>OTA</button>
+            </div>
         </div>
 
         <!-- Calibration Card -->
@@ -572,11 +585,15 @@
         const CHARACTERISTIC_UUID_SWITCH = '2cfd0a89-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_CAL_STATUS = '2cfd0a8a-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_CAL_COMMAND = '2cfd0a8b-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_SYSTEM_CONTROL = '2cfd0a8c-f013-4fe2-8dbd-fe3a5f4a64ff';
 
         const CAL_CMD_HALL1_IDLE = 1;
         const CAL_CMD_HALL1_PRESS = 2;
         const CAL_CMD_HALL2_IDLE = 3;
         const CAL_CMD_HALL2_PRESS = 4;
+        const SYSTEM_CMD_REBOOT = 1;
+        const SYSTEM_CMD_DFU = 2;
+        const SYSTEM_CMD_OTA = 3;
 
         let bluetoothDevice = null;
         let ledCharacteristic = null;
@@ -587,6 +604,7 @@
         let switchCharacteristic = null;
         let calibrationStatusCharacteristic = null;
         let calibrationCommandCharacteristic = null;
+        let systemControlCharacteristic = null;
 
         const connectBtn = document.getElementById('connectBtn');
         const ledOnBtn = document.getElementById('ledOnBtn');
@@ -595,6 +613,9 @@
         const vibLongBtn = document.getElementById('vibLongBtn');
         const switchOnBtn = document.getElementById('switchOnBtn');
         const switchOffBtn = document.getElementById('switchOffBtn');
+        const rebootBtn = document.getElementById('rebootBtn');
+        const dfuBtn = document.getElementById('dfuBtn');
+        const otaBtn = document.getElementById('otaBtn');
         const calHall1IdleBtn = document.getElementById('calHall1IdleBtn');
         const calHall1PressBtn = document.getElementById('calHall1PressBtn');
         const calHall2IdleBtn = document.getElementById('calHall2IdleBtn');
@@ -621,6 +642,9 @@
                     vibLongBtn.disabled = true;
                     switchOnBtn.disabled = true;
                     switchOffBtn.disabled = true;
+                    rebootBtn.disabled = true;
+                    dfuBtn.disabled = true;
+                    otaBtn.disabled = true;
                     calHall1IdleBtn.disabled = true;
                     calHall1PressBtn.disabled = true;
                     calHall2IdleBtn.disabled = true;
@@ -646,6 +670,9 @@
                     vibLongBtn.disabled = false;
                     switchOnBtn.disabled = false;
                     switchOffBtn.disabled = false;
+                    rebootBtn.disabled = false;
+                    dfuBtn.disabled = false;
+                    otaBtn.disabled = false;
                     calHall1IdleBtn.disabled = false;
                     calHall1PressBtn.disabled = false;
                     calHall2IdleBtn.disabled = false;
@@ -691,6 +718,7 @@
                 switchCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_SWITCH);
                 calibrationStatusCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_CAL_STATUS);
                 calibrationCommandCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_CAL_COMMAND);
+                systemControlCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_SYSTEM_CONTROL);
 
                 await tempCharacteristic.startNotifications();
                 tempCharacteristic.addEventListener('characteristicvaluechanged', handleTemperatureChange);
@@ -729,6 +757,7 @@
             if (switchCharacteristic) switchCharacteristic = null;
             if (calibrationStatusCharacteristic) calibrationStatusCharacteristic = null;
             if (calibrationCommandCharacteristic) calibrationCommandCharacteristic = null;
+            if (systemControlCharacteristic) systemControlCharacteristic = null;
             updateUI('disconnected');
         }
 
@@ -866,6 +895,25 @@
             }
         }
 
+        async function sendSystemCommand(command) {
+            if (!systemControlCharacteristic) return;
+
+            try {
+                rebootBtn.disabled = true;
+                dfuBtn.disabled = true;
+                otaBtn.disabled = true;
+                updateUI('transmitting');
+                await systemControlCharacteristic.writeValue(new Uint8Array([command]));
+            } catch (error) {
+                console.error('System control failed:', error);
+                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                    rebootBtn.disabled = false;
+                    dfuBtn.disabled = false;
+                    otaBtn.disabled = false;
+                }
+            }
+        }
+
         connectBtn.addEventListener('click', toggleConnection);
         ledOnBtn.addEventListener('click', () => sendLedCommand(1));
         ledOffBtn.addEventListener('click', () => sendLedCommand(0));
@@ -873,6 +921,9 @@
         vibLongBtn.addEventListener('click', () => playVibration(200, 300));
         switchOnBtn.addEventListener('click', () => sendSwitchCommand(1));
         switchOffBtn.addEventListener('click', () => sendSwitchCommand(0));
+        rebootBtn.addEventListener('click', () => sendSystemCommand(SYSTEM_CMD_REBOOT));
+        dfuBtn.addEventListener('click', () => sendSystemCommand(SYSTEM_CMD_DFU));
+        otaBtn.addEventListener('click', () => sendSystemCommand(SYSTEM_CMD_OTA));
         calHall1IdleBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL1_IDLE));
         calHall1PressBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL1_PRESS));
         calHall2IdleBtn.addEventListener('click', () => sendCalibrationCommand(CAL_CMD_HALL2_IDLE));

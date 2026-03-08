@@ -2,6 +2,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/adc.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/fs/nvs.h>
+#include <zephyr/storage/flash_map.h>
 #include <hal/nrf_saadc.h>
 #include <string.h>
 
@@ -11,6 +14,8 @@
 #define HALL2_DEFAULT_CLICK_THRESHOLD 2600
 #define HALL2_DEFAULT_RELEASE_THRESHOLD 2400
 #define CALIBRATION_SAMPLE_TARGET 8
+#define SENSOR_CALIBRATION_MAGIC 0x43414c31U
+#define SENSOR_CALIBRATION_NVS_ID 1U
 
 static const struct device *adc_dev;
 static int16_t sample_buffer[2];
@@ -33,6 +38,23 @@ static bool hall2_calibrated;
 static uint8_t calibration_command;
 static uint8_t calibration_sample_count;
 static int64_t calibration_sample_sum;
+static struct nvs_fs calibration_nvs;
+static bool calibration_storage_ready;
+
+struct sensor_calibration_flash_data {
+    uint32_t magic;
+    int32_t hall1_idle;
+    int32_t hall1_press;
+    int32_t hall1_threshold;
+    int32_t hall1_release;
+    int32_t hall2_idle;
+    int32_t hall2_press;
+    int32_t hall2_threshold;
+    int32_t hall2_release;
+    uint8_t hall1_ready;
+    uint8_t hall2_ready;
+    uint8_t reserved[2];
+};
 
 static const struct adc_channel_cfg vdt_cfg1 = {
     .gain             = ADC_GAIN_1_6,
@@ -50,6 +72,95 @@ static const struct adc_channel_cfg vdt_cfg2 = {
     .input_positive   = NRF_SAADC_INPUT_AIN5
 };
 
+static void sensor_save_calibration(void)
+{
+    struct sensor_calibration_flash_data data = {
+        .magic = SENSOR_CALIBRATION_MAGIC,
+        .hall1_idle = hall1_idle_value,
+        .hall1_press = hall1_press_value,
+        .hall1_threshold = hall1_click_threshold,
+        .hall1_release = hall1_release_threshold,
+        .hall2_idle = hall2_idle_value,
+        .hall2_press = hall2_press_value,
+        .hall2_threshold = hall2_click_threshold,
+        .hall2_release = hall2_release_threshold,
+        .hall1_ready = hall1_calibrated ? 1U : 0U,
+        .hall2_ready = hall2_calibrated ? 1U : 0U,
+    };
+
+    if (!calibration_storage_ready) {
+        return;
+    }
+
+    if (nvs_write(&calibration_nvs, SENSOR_CALIBRATION_NVS_ID,
+                  &data, sizeof(data)) < 0) {
+        printk("Failed to save calibration\n");
+    }
+}
+
+static void sensor_load_calibration(void)
+{
+    struct sensor_calibration_flash_data data;
+    ssize_t len;
+
+    if (!calibration_storage_ready) {
+        return;
+    }
+
+    len = nvs_read(&calibration_nvs, SENSOR_CALIBRATION_NVS_ID, &data, sizeof(data));
+    if ((len != sizeof(data)) || (data.magic != SENSOR_CALIBRATION_MAGIC)) {
+        return;
+    }
+
+    hall1_idle_value = data.hall1_idle;
+    hall1_press_value = data.hall1_press;
+    hall1_click_threshold = data.hall1_threshold;
+    hall1_release_threshold = data.hall1_release;
+    hall2_idle_value = data.hall2_idle;
+    hall2_press_value = data.hall2_press;
+    hall2_click_threshold = data.hall2_threshold;
+    hall2_release_threshold = data.hall2_release;
+    hall1_calibrated = data.hall1_ready == 1U;
+    hall2_calibrated = data.hall2_ready == 1U;
+    hall1_idle_captured = hall1_calibrated;
+    hall1_press_captured = hall1_calibrated;
+    hall2_idle_captured = hall2_calibrated;
+    hall2_press_captured = hall2_calibrated;
+}
+
+static void sensor_storage_init(void)
+{
+    const struct flash_area *storage_area;
+    struct flash_pages_info info;
+
+    if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &storage_area) != 0) {
+        printk("Failed to open storage partition\n");
+        return;
+    }
+
+    calibration_nvs.flash_device = storage_area->fa_dev;
+    calibration_nvs.offset = storage_area->fa_off;
+
+    if (flash_get_page_info_by_offs(storage_area->fa_dev, storage_area->fa_off, &info) != 0) {
+        printk("Failed to get storage page info\n");
+        flash_area_close(storage_area);
+        return;
+    }
+
+    calibration_nvs.sector_size = info.size;
+    calibration_nvs.sector_count = storage_area->fa_size / info.size;
+
+    if (nvs_mount(&calibration_nvs) != 0) {
+        printk("Failed to mount NVS\n");
+        flash_area_close(storage_area);
+        return;
+    }
+
+    calibration_storage_ready = true;
+    sensor_load_calibration();
+    flash_area_close(storage_area);
+}
+
 void sensor_init(void)
 {
     adc_dev = DEVICE_DT_GET(ADC_NODE);
@@ -59,6 +170,7 @@ void sensor_init(void)
 
     adc_channel_setup(adc_dev, &vdt_cfg1);
     adc_channel_setup(adc_dev, &vdt_cfg2);
+    sensor_storage_init();
 }
 
 void sensor_read_hall(int32_t *hall1, int32_t *hall2)
@@ -138,6 +250,7 @@ void sensor_calibration_update(int32_t hall1, int32_t hall2)
             sensor_apply_calibration(hall1_idle_value, hall1_press_value,
                                      &hall1_click_threshold, &hall1_release_threshold);
             hall1_calibrated = true;
+            sensor_save_calibration();
         }
         break;
     case SENSOR_CALIB_CMD_HALL1_PRESS:
@@ -148,6 +261,7 @@ void sensor_calibration_update(int32_t hall1, int32_t hall2)
             sensor_apply_calibration(hall1_idle_value, hall1_press_value,
                                      &hall1_click_threshold, &hall1_release_threshold);
             hall1_calibrated = true;
+            sensor_save_calibration();
         }
         break;
     case SENSOR_CALIB_CMD_HALL2_IDLE:
@@ -158,6 +272,7 @@ void sensor_calibration_update(int32_t hall1, int32_t hall2)
             sensor_apply_calibration(hall2_idle_value, hall2_press_value,
                                      &hall2_click_threshold, &hall2_release_threshold);
             hall2_calibrated = true;
+            sensor_save_calibration();
         }
         break;
     case SENSOR_CALIB_CMD_HALL2_PRESS:
@@ -168,6 +283,7 @@ void sensor_calibration_update(int32_t hall1, int32_t hall2)
             sensor_apply_calibration(hall2_idle_value, hall2_press_value,
                                      &hall2_click_threshold, &hall2_release_threshold);
             hall2_calibrated = true;
+            sensor_save_calibration();
         }
         break;
     default:

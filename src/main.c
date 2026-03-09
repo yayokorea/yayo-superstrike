@@ -31,8 +31,6 @@ int main(void)
 
 	int32_t hall1 = 0, hall2 = 0;
 
-	int loop_count = 0;
-
 	while (1) {
 		temperature_read();
 		sensor_read_hall(&hall1, &hall2);
@@ -45,11 +43,6 @@ int main(void)
 		}
 		mouse_switch_process();
 		ble_notify_hall_sensors(hall1, hall2);
-
-		if (loop_count % 10 == 0) { // Print every 500ms (50ms * 10) to avoid spam
-			printk("Hall1: %d, Hall2: %d\n", hall1, hall2);
-		}
-		loop_count++;
 
 		k_sleep(K_MSEC(50)); // Read sensors every 50ms for smooth UI updates
 	}

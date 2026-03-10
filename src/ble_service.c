@@ -112,11 +112,11 @@ static void system_control_work_handler(struct k_work *work)
         dfu_reboot();
         break;
     case SYSTEM_CONTROL_CMD_DFU:
-        printk("System control: dfu\n");
+        printk("System control: reboot through MCUboot\n");
         dfu_reboot_to_bootloader();
         break;
     case SYSTEM_CONTROL_CMD_OTA:
-        printk("System control: ota\n");
+        printk("System control: test uploaded image and reboot\n");
         dfu_reboot_to_ota();
         break;
     default:

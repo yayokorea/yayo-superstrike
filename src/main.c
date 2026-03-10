@@ -1,4 +1,5 @@
 #include <zephyr/kernel.h>
+#include <zephyr/dfu/mcuboot.h>
 #include <zephyr/sys/printk.h>
 
 #include "usb_console.h"
@@ -8,9 +9,25 @@
 #include "motor.h"
 #include "sensor.h"
 
+static void confirm_running_image(void)
+{
+	if (boot_is_img_confirmed()) {
+		return;
+	}
+
+	int err = boot_write_img_confirmed();
+
+	if (err) {
+		printk("Failed to confirm MCUboot image (err %d)\n", err);
+	} else {
+		printk("MCUboot image confirmed\n");
+	}
+}
+
 int main(void)
 {
 	usb_console_init();
+	confirm_running_image();
 
 	printk("\n=== Zephyr BLE Peripheral Starting ===\n");
 

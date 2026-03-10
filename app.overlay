@@ -3,6 +3,11 @@
 / {
     aliases {
     };
+
+    chosen {
+        zephyr,console = &board_cdc_acm_uart;
+        zephyr,shell-uart = &board_cdc_acm_uart;
+    };
 };
 
 &pinctrl {

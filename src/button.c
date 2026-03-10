@@ -24,7 +24,7 @@ static void button_pressed(const struct device *dev, struct gpio_callback *cb,
     ARG_UNUSED(pins);
 
     printk("Button pressed at %" PRIu32 "\n", k_cycle_get_32());
-    printk("Rebooting to DFU mode...\n");
+    printk("Rebooting through MCUboot...\n");
     dfu_reboot_to_bootloader();
 }
 

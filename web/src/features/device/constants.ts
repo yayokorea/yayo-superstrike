@@ -1,0 +1,13 @@
+export const CUSTOM_SERVICE_UUID = '2cfd0a83-f013-4fe2-8dbd-fe3a5f4a64ff';
+
+export const DEVICE_CHARACTERISTICS = {
+  temperature: '2cfd0a85-f013-4fe2-8dbd-fe3a5f4a64ff',
+  battery: '2cfd0a8d-f013-4fe2-8dbd-fe3a5f4a64ff',
+  hall1: '2cfd0a87-f013-4fe2-8dbd-fe3a5f4a64ff',
+  hall2: '2cfd0a88-f013-4fe2-8dbd-fe3a5f4a64ff',
+  systemControl: '2cfd0a8c-f013-4fe2-8dbd-fe3a5f4a64ff',
+} as const;
+
+export const SYSTEM_COMMANDS = {
+  reboot: 1,
+} as const;

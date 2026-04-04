@@ -10,30 +10,6 @@
     };
 };
 
-&pinctrl {
-    pwm0_custom: pwm0_custom {
-        group1 {
-            psels = <NRF_PSEL(PWM_OUT0, 0, 6)>,
-                    <NRF_PSEL(PWM_OUT1, 0, 8)>;
-        };
-    };
-
-    pwm0_custom_sleep: pwm0_custom_sleep {
-        group1 {
-            psels = <NRF_PSEL(PWM_OUT0, 0, 6)>,
-                    <NRF_PSEL(PWM_OUT1, 0, 8)>;
-            low-power-enable;
-        };
-    };
-};
-
-&pwm0 {
-    status = "okay";
-    pinctrl-0 = <&pwm0_custom>;
-    pinctrl-1 = <&pwm0_custom_sleep>;
-    pinctrl-names = "default", "sleep";
-};
-
 &adc {
     status = "okay";
 };

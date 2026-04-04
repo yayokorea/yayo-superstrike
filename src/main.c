@@ -43,10 +43,11 @@ int main(void)
 		return 0;
 	}
 
-	motor_init();
 	sensor_init();
 
 	int32_t hall1 = 0, hall2 = 0;
+	struct sensor_battery_status battery = { 0 };
+	int battery_notify_divider = 0;
 
 	while (1) {
 		temperature_read();
@@ -60,6 +61,11 @@ int main(void)
 		}
 		mouse_switch_process();
 		ble_notify_hall_sensors(hall1, hall2);
+		if (++battery_notify_divider >= 20) {
+			battery_notify_divider = 0;
+			sensor_read_battery(&battery);
+			ble_notify_battery(&battery);
+		}
 
 		k_sleep(K_MSEC(50)); // Read sensors every 50ms for smooth UI updates
 	}

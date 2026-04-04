@@ -16,9 +16,17 @@
 #define CALIBRATION_SAMPLE_TARGET 8
 #define SENSOR_CALIBRATION_MAGIC 0x43414c31U
 #define SENSOR_CALIBRATION_NVS_ID 1U
+#define BATTERY_ADC_CHANNEL_ID 7
+#define BATTERY_DIVIDER_OUTPUT_OHMS 1U
+#define BATTERY_DIVIDER_FULL_OHMS 5U
+#define BATTERY_SAMPLE_COUNT 5U
+#define BATTERY_EMA_SHIFT 3U
 
 static const struct device *adc_dev;
 static int16_t sample_buffer[2];
+static int16_t battery_sample_buffer;
+static bool battery_adc_needs_calibration = true;
+static uint16_t battery_filtered_millivolts;
 static bool hall1_click_latched;
 static bool hall2_click_latched;
 static int32_t hall1_click_threshold = HALL1_DEFAULT_CLICK_THRESHOLD;
@@ -71,6 +79,139 @@ static const struct adc_channel_cfg vdt_cfg2 = {
     .channel_id       = 5, // AIN5 (P0.29)
     .input_positive   = NRF_SAADC_INPUT_AIN5
 };
+
+static const struct adc_channel_cfg battery_cfg = {
+    .gain             = ADC_GAIN_1_6,
+    .reference        = ADC_REF_INTERNAL,
+    .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
+    .channel_id       = BATTERY_ADC_CHANNEL_ID,
+    .input_positive   = NRF_SAADC_INPUT_VDDHDIV5
+};
+
+struct battery_level_point {
+    uint16_t percent;
+    uint16_t millivolts;
+};
+
+static const struct battery_level_point battery_levels[] = {
+    { 100U, 4150U },
+    { 95U, 4025U },
+    { 30U, 3650U },
+    { 5U, 3400U },
+    { 0U, 3200U },
+};
+
+static uint16_t sensor_battery_raw_to_mv(int16_t raw)
+{
+    int32_t millivolts = raw;
+
+    if (raw <= 0) {
+        return 0U;
+    }
+
+    if (adc_raw_to_millivolts(adc_ref_internal(adc_dev),
+                              battery_cfg.gain,
+                              14,
+                              &millivolts) != 0) {
+        return 0U;
+    }
+
+    if (millivolts <= 0) {
+        return 0U;
+    }
+
+    return (uint16_t)(((uint32_t)millivolts * BATTERY_DIVIDER_FULL_OHMS) /
+                      BATTERY_DIVIDER_OUTPUT_OHMS);
+}
+
+static uint8_t sensor_battery_mv_to_percent(uint16_t millivolts)
+{
+    const struct battery_level_point *below;
+    const struct battery_level_point *above;
+
+    if (millivolts >= battery_levels[0].millivolts) {
+        return battery_levels[0].percent;
+    }
+
+    below = &battery_levels[ARRAY_SIZE(battery_levels) - 1];
+    if (millivolts <= below->millivolts) {
+        return below->percent;
+    }
+
+    for (size_t i = 1; i < ARRAY_SIZE(battery_levels); ++i) {
+        if (millivolts >= battery_levels[i].millivolts) {
+            above = &battery_levels[i - 1];
+            below = &battery_levels[i];
+
+            return (uint8_t)(below->percent +
+                             ((above->percent - below->percent) *
+                              (millivolts - below->millivolts)) /
+                             (above->millivolts - below->millivolts));
+        }
+    }
+
+    return 0U;
+}
+
+static uint16_t sensor_read_battery_once_mv(void)
+{
+    struct adc_sequence sequence = {
+        .channels = BIT(BATTERY_ADC_CHANNEL_ID),
+        .buffer = &battery_sample_buffer,
+        .buffer_size = sizeof(battery_sample_buffer),
+        .oversampling = 2,
+        .resolution = 14,
+        .calibrate = battery_adc_needs_calibration,
+    };
+
+    if (adc_read(adc_dev, &sequence) != 0) {
+        return 0U;
+    }
+
+    battery_adc_needs_calibration = false;
+    return sensor_battery_raw_to_mv(battery_sample_buffer);
+}
+
+static uint16_t sensor_filter_battery_mv(void)
+{
+    uint16_t samples[BATTERY_SAMPLE_COUNT];
+    uint16_t sample_mv;
+
+    for (size_t i = 0; i < ARRAY_SIZE(samples); ++i) {
+        sample_mv = sensor_read_battery_once_mv();
+        if (sample_mv == 0U) {
+            return 0U;
+        }
+
+        samples[i] = sample_mv;
+    }
+
+    for (size_t i = 1; i < ARRAY_SIZE(samples); ++i) {
+        uint16_t key = samples[i];
+        size_t j = i;
+
+        while ((j > 0U) && (samples[j - 1U] > key)) {
+            samples[j] = samples[j - 1U];
+            --j;
+        }
+
+        samples[j] = key;
+    }
+
+    sample_mv = samples[ARRAY_SIZE(samples) / 2U];
+
+    if (battery_filtered_millivolts == 0U) {
+        battery_filtered_millivolts = sample_mv;
+    } else {
+        battery_filtered_millivolts =
+            (uint16_t)(((uint32_t)battery_filtered_millivolts *
+                        ((1U << BATTERY_EMA_SHIFT) - 1U) +
+                        sample_mv) >>
+                       BATTERY_EMA_SHIFT);
+    }
+
+    return battery_filtered_millivolts;
+}
 
 static void sensor_save_calibration(void)
 {
@@ -170,6 +311,7 @@ void sensor_init(void)
 
     adc_channel_setup(adc_dev, &vdt_cfg1);
     adc_channel_setup(adc_dev, &vdt_cfg2);
+    adc_channel_setup(adc_dev, &battery_cfg);
     sensor_storage_init();
 }
 
@@ -196,6 +338,23 @@ void sensor_read_hall(int32_t *hall1, int32_t *hall2)
         *hall1 = -1;
         *hall2 = -1;
     }
+}
+
+void sensor_read_battery(struct sensor_battery_status *status)
+{
+    if (!status) {
+        return;
+    }
+
+    status->millivolts = 0U;
+    status->percent = 0U;
+
+    if (!adc_dev) {
+        return;
+    }
+
+    status->millivolts = sensor_filter_battery_mv();
+    status->percent = sensor_battery_mv_to_percent(status->millivolts);
 }
 
 static void sensor_apply_calibration(int32_t idle, int32_t press,

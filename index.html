@@ -389,6 +389,16 @@
             letter-spacing: -1px;
         }
 
+        .sensor-box.battery .val {
+            color: #fbbf24;
+        }
+
+        .sensor-box .sub {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
         .sensor-box .lbl {
             font-size: 0.85rem;
             color: var(--text-muted);
@@ -516,6 +526,11 @@
                     <div class="val" id="tempDisplay">--.-- °C</div>
                     <div class="lbl">현재 온도</div>
                 </div>
+                <div class="sensor-box battery">
+                    <div class="val" id="batteryDisplay">--%</div>
+                    <div class="sub" id="batteryVoltageDisplay">-.--- V</div>
+                    <div class="lbl">Battery</div>
+                </div>
                 <div class="sensor-row">
                     <div class="sensor-box">
                         <div class="val" id="hall1Display">--</div>
@@ -544,8 +559,6 @@
             </div>
 
             <div class="action-grid">
-                <button id="vibShortBtn" class="btn btn-outline" disabled>짧은 진동</button>
-                <button id="vibLongBtn" class="btn btn-outline" disabled>긴 진동</button>
                 <button id="switchOnBtn" class="btn btn-orange" disabled>스위치 누르기</button>
                 <button id="switchOffBtn" class="btn btn-gray" disabled>스위치 떼기</button>
             </div>
@@ -579,7 +592,7 @@
         const SERVICE_UUID = '2cfd0a83-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_LED = '2cfd0a84-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_TEMP = '2cfd0a85-f013-4fe2-8dbd-fe3a5f4a64ff';
-        const CHARACTERISTIC_UUID_MOTOR = '2cfd0a86-f013-4fe2-8dbd-fe3a5f4a64ff';
+        const CHARACTERISTIC_UUID_BATTERY = '2cfd0a8d-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_HALL1 = '2cfd0a87-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_HALL2 = '2cfd0a88-f013-4fe2-8dbd-fe3a5f4a64ff';
         const CHARACTERISTIC_UUID_SWITCH = '2cfd0a89-f013-4fe2-8dbd-fe3a5f4a64ff';
@@ -598,7 +611,7 @@
         let bluetoothDevice = null;
         let ledCharacteristic = null;
         let tempCharacteristic = null;
-        let motorCharacteristic = null;
+        let batteryCharacteristic = null;
         let hall1Characteristic = null;
         let hall2Characteristic = null;
         let switchCharacteristic = null;
@@ -609,8 +622,6 @@
         const connectBtn = document.getElementById('connectBtn');
         const ledOnBtn = document.getElementById('ledOnBtn');
         const ledOffBtn = document.getElementById('ledOffBtn');
-        const vibShortBtn = document.getElementById('vibShortBtn');
-        const vibLongBtn = document.getElementById('vibLongBtn');
         const switchOnBtn = document.getElementById('switchOnBtn');
         const switchOffBtn = document.getElementById('switchOffBtn');
         const rebootBtn = document.getElementById('rebootBtn');
@@ -626,6 +637,8 @@
         const statusBadge = document.getElementById('statusBadge');
         const statusDot = document.getElementById('statusDot');
         const ledIndicator = document.getElementById('ledIndicator');
+        const batteryDisplay = document.getElementById('batteryDisplay');
+        const batteryVoltageDisplay = document.getElementById('batteryVoltageDisplay');
 
         function updateUI(state) {
             switch (state) {
@@ -638,8 +651,6 @@
 
                     ledOnBtn.disabled = true;
                     ledOffBtn.disabled = true;
-                    vibShortBtn.disabled = true;
-                    vibLongBtn.disabled = true;
                     switchOnBtn.disabled = true;
                     switchOffBtn.disabled = true;
                     rebootBtn.disabled = true;
@@ -651,6 +662,8 @@
                     calHall2PressBtn.disabled = true;
                     refreshCalBtn.disabled = true;
                     ledIndicator.classList.remove('on');
+                    batteryDisplay.innerText = '--%';
+                    batteryVoltageDisplay.innerText = '-.--- V';
                     break;
                 case 'connecting':
                     statusText.innerText = '블루투스 기기 연결 시도 중...';
@@ -666,8 +679,6 @@
 
                     ledOnBtn.disabled = false;
                     ledOffBtn.disabled = false;
-                    vibShortBtn.disabled = false;
-                    vibLongBtn.disabled = false;
                     switchOnBtn.disabled = false;
                     switchOffBtn.disabled = false;
                     rebootBtn.disabled = false;
@@ -712,7 +723,7 @@
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 ledCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_LED);
                 tempCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_TEMP);
-                motorCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_MOTOR);
+                batteryCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_BATTERY);
                 hall1Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL1);
                 hall2Characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_HALL2);
                 switchCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID_SWITCH);
@@ -722,6 +733,10 @@
 
                 await tempCharacteristic.startNotifications();
                 tempCharacteristic.addEventListener('characteristicvaluechanged', handleTemperatureChange);
+
+                await batteryCharacteristic.startNotifications();
+                batteryCharacteristic.addEventListener('characteristicvaluechanged', handleBatteryChange);
+                handleBatteryChange({ target: { value: await batteryCharacteristic.readValue() } });
 
                 await hall1Characteristic.startNotifications();
                 hall1Characteristic.addEventListener('characteristicvaluechanged', (e) => {
@@ -747,10 +762,13 @@
         function onDisconnected() {
             console.log('BLE Disconnected');
             ledCharacteristic = null;
-            motorCharacteristic = null;
             if (tempCharacteristic) {
                 tempCharacteristic.removeEventListener('characteristicvaluechanged', handleTemperatureChange);
                 tempCharacteristic = null;
+            }
+            if (batteryCharacteristic) {
+                batteryCharacteristic.removeEventListener('characteristicvaluechanged', handleBatteryChange);
+                batteryCharacteristic = null;
             }
             if (hall1Characteristic) hall1Characteristic = null;
             if (hall2Characteristic) hall2Characteristic = null;
@@ -766,6 +784,14 @@
             const tempEncoded = value.getInt32(0, true);
             const tempFloat = (tempEncoded / 100).toFixed(2);
             document.getElementById('tempDisplay').innerText = tempFloat + ' °C';
+        }
+
+        function handleBatteryChange(event) {
+            const value = event.target.value;
+            const millivolts = value.getUint16(0, true);
+            const percent = value.getUint8(2);
+            batteryDisplay.innerText = percent + '%';
+            batteryVoltageDisplay.innerText = (millivolts / 1000).toFixed(3) + ' V';
         }
 
         function updateCalibrationSummary(status) {
@@ -857,29 +883,6 @@
             }
         }
 
-        async function playVibration(intensity, duration) {
-            if (!motorCharacteristic) return;
-            try {
-                vibShortBtn.disabled = true;
-                vibLongBtn.disabled = true;
-                updateUI('transmitting');
-                await motorCharacteristic.writeValue(new Uint8Array([intensity]));
-                setTimeout(async () => {
-                    if (motorCharacteristic) {
-                        try {
-                            await motorCharacteristic.writeValue(new Uint8Array([0]));
-                        } catch (err) { }
-                    }
-                    vibShortBtn.disabled = false;
-                    vibLongBtn.disabled = false;
-                }, duration);
-            } catch (error) {
-                console.error('Vibration failed:', error);
-                vibShortBtn.disabled = false;
-                vibLongBtn.disabled = false;
-            }
-        }
-
         async function sendSwitchCommand(value) {
             if (!switchCharacteristic) return;
             try {
@@ -917,8 +920,6 @@
         connectBtn.addEventListener('click', toggleConnection);
         ledOnBtn.addEventListener('click', () => sendLedCommand(1));
         ledOffBtn.addEventListener('click', () => sendLedCommand(0));
-        vibShortBtn.addEventListener('click', () => playVibration(200, 50));
-        vibLongBtn.addEventListener('click', () => playVibration(200, 300));
         switchOnBtn.addEventListener('click', () => sendSwitchCommand(1));
         switchOffBtn.addEventListener('click', () => sendSwitchCommand(0));
         rebootBtn.addEventListener('click', () => sendSystemCommand(SYSTEM_CMD_REBOOT));

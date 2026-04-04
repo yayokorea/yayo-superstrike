@@ -93,6 +93,11 @@ int ble_notify_hall_sensors(int32_t hall1, int32_t hall2)
     return ble_service_notify_hall_sensors(hall1, hall2);
 }
 
+int ble_notify_battery(const struct sensor_battery_status *status)
+{
+    return ble_service_notify_battery(status);
+}
+
 int ble_notify_temperature(int32_t temperature)
 {
     return ble_service_notify_temperature(temperature);

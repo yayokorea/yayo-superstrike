@@ -1,87 +1,25 @@
 #include "motor.h"
-#include <zephyr/kernel.h>
-#include <zephyr/device.h>
-#include <zephyr/drivers/pwm.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/sys/printk.h> // printk 추가
 
-#define STBY_NODE DT_NODELABEL(gpio0)
-#define STBY_PIN 17
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/init.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
+
 #define MOUSE_SWITCH_NODE DT_NODELABEL(gpio1)
 #define MOUSE_RIGHT_SWITCH_PIN 11
 #define MOUSE_LEFT_SWITCH_PIN 13
 
-static const struct device *gpio0_dev;
 static const struct device *gpio1_dev;
-static const struct device *pwm_dev;
 static int64_t left_click_release_at;
 static int64_t right_click_release_at;
-
-void motor_init(void)
-{
-    gpio0_dev = DEVICE_DT_GET(STBY_NODE);
-    if (!device_is_ready(gpio0_dev)) {
-        printk("GPIO device (gpio0) not ready!\n");
-    } else {
-        gpio_pin_configure(gpio0_dev, STBY_PIN, GPIO_OUTPUT_INACTIVE);
-        printk("GPIO STBY initialized on P0.17\n");
-    }
-
-    gpio1_dev = DEVICE_DT_GET(MOUSE_SWITCH_NODE);
-    if (!device_is_ready(gpio1_dev)) {
-        printk("GPIO device (gpio1) not ready!\n");
-    } else {
-        gpio_pin_configure(gpio1_dev, MOUSE_RIGHT_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
-        gpio_pin_configure(gpio1_dev, MOUSE_LEFT_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
-        printk("Mouse switches initialized on P1.11(right), P1.13(left)\n");
-    }
-
-    pwm_dev = DEVICE_DT_GET(DT_NODELABEL(pwm0));
-    if (!device_is_ready(pwm_dev)) {
-        printk("PWM device not ready!\n");
-    } else {
-        printk("PWM device initialized successfully\n");
-    }
-}
-
-void motor_set_vibration(int intensity)
-{
-    if (!gpio0_dev || !pwm_dev || !device_is_ready(gpio0_dev) || !device_is_ready(pwm_dev)) {
-        printk("Motor control failed: Device not ready\n");
-        return;
-    }
-
-    if (intensity > 0) {
-        gpio_pin_set(gpio0_dev, STBY_PIN, 1);
-        
-        // 탭틱 엔진(LRA)은 공진 주파수(약 170Hz)가 중요합니다.
-        // 170Hz -> period 약 5,882,353ns
-        uint32_t period_ns = 5882353;
-        
-        // 교류 전압(AC) 밸런스를 맞추기 위해 LRA는 50% 듀티에서 최대 공진(초고강도)이 발생합니다.
-        // 255일 때 정확히 50%(반반)가 되도록 계산합니다.
-        uint32_t pulse_ns = (period_ns * intensity) / 510; 
-        
-        // AIN1은 정상 위상(정방향) 펄스
-        int err = pwm_set(pwm_dev, 0, period_ns, pulse_ns, 0); // P0.06
-        // AIN2는 반전 위상(역방향) 펄스를 주어 전류 방향이 교차되도록 만듭니다!
-        int err2 = pwm_set(pwm_dev, 1, period_ns, pulse_ns, PWM_POLARITY_INVERTED); // P0.08
-        
-        if (err || err2) {
-            printk("PWM set failed: err=%d, err2=%d\n", err, err2);
-        }
-    } else {
-        pwm_set(pwm_dev, 0, 1000000, 0, 0);
-        pwm_set(pwm_dev, 1, 1000000, 0, 0);
-        gpio_pin_set(gpio0_dev, STBY_PIN, 0);
-    }
-}
 
 void mouse_left_switch_set(bool state)
 {
     if (!gpio1_dev || !device_is_ready(gpio1_dev)) {
         return;
     }
+
     gpio_pin_set(gpio1_dev, MOUSE_LEFT_SWITCH_PIN, state ? 1 : 0);
     printk("Mouse left switch (P1.13) %s\n", state ? "ON" : "OFF");
 }
@@ -91,6 +29,7 @@ void mouse_right_switch_set(bool state)
     if (!gpio1_dev || !device_is_ready(gpio1_dev)) {
         return;
     }
+
     gpio_pin_set(gpio1_dev, MOUSE_RIGHT_SWITCH_PIN, state ? 1 : 0);
     printk("Mouse right switch (P1.11) %s\n", state ? "ON" : "OFF");
 }
@@ -121,3 +60,19 @@ void mouse_switch_process(void)
         right_click_release_at = 0;
     }
 }
+
+static int mouse_switch_init(void)
+{
+    gpio1_dev = DEVICE_DT_GET(MOUSE_SWITCH_NODE);
+    if (!device_is_ready(gpio1_dev)) {
+        printk("GPIO device (gpio1) not ready!\n");
+        return -1;
+    }
+
+    gpio_pin_configure(gpio1_dev, MOUSE_RIGHT_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
+    gpio_pin_configure(gpio1_dev, MOUSE_LEFT_SWITCH_PIN, GPIO_OUTPUT_INACTIVE);
+    printk("Mouse switches initialized on P1.11(right), P1.13(left)\n");
+    return 0;
+}
+
+SYS_INIT(mouse_switch_init, APPLICATION, 0);

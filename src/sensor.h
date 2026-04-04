@@ -26,8 +26,14 @@ struct sensor_calibration_status {
     uint8_t hall2_ready;
 };
 
+struct sensor_battery_status {
+    uint16_t millivolts;
+    uint8_t percent;
+};
+
 void sensor_init(void);
 void sensor_read_hall(int32_t *hall1, int32_t *hall2);
+void sensor_read_battery(struct sensor_battery_status *status);
 void sensor_calibration_update(int32_t hall1, int32_t hall2);
 int sensor_start_calibration(uint8_t command);
 void sensor_get_calibration_status(struct sensor_calibration_status *status);

@@ -27,10 +27,10 @@
     BT_UUID_128_ENCODE(0x2cfd0a85, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
 #define BT_UUID_CUSTOM_CHAR_TEMP BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_TEMP_VAL)
 
-/* Custom Characteristic UUID for Motor: 2cfd0a86-f013-4fe2-8dbd-fe3a5f4a64ff */
-#define BT_UUID_CUSTOM_CHAR_MOTOR_VAL \
-    BT_UUID_128_ENCODE(0x2cfd0a86, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
-#define BT_UUID_CUSTOM_CHAR_MOTOR BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_MOTOR_VAL)
+/* Custom Characteristic UUID for Battery: 2cfd0a8d-f013-4fe2-8dbd-fe3a5f4a64ff */
+#define BT_UUID_CUSTOM_CHAR_BATTERY_VAL \
+    BT_UUID_128_ENCODE(0x2cfd0a8d, 0xf013, 0x4fe2, 0x8dbd, 0xfe3a5f4a64ff)
+#define BT_UUID_CUSTOM_CHAR_BATTERY BT_UUID_DECLARE_128(BT_UUID_CUSTOM_CHAR_BATTERY_VAL)
 
 /* Custom Characteristic UUID for Hall1: 2cfd0a87-f013-4fe2-8dbd-fe3a5f4a64ff */
 #define BT_UUID_CUSTOM_CHAR_HALL1_VAL \
@@ -64,6 +64,7 @@
 
 enum {
     TEMP_NOTIFY_ATTR_INDEX = 4,
+    BATTERY_NOTIFY_ATTR_INDEX = 7,
     HALL1_NOTIFY_ATTR_INDEX = 9,
     HALL2_NOTIFY_ATTR_INDEX = 12,
 };
@@ -75,9 +76,15 @@ enum system_control_command {
 };
 
 static bool temp_notify_enabled;
+static bool battery_notify_enabled;
 static bool hall1_notify_enabled;
 static bool hall2_notify_enabled;
 static uint8_t pending_system_command;
+
+struct __packed ble_battery_payload {
+    uint16_t millivolts;
+    uint8_t percent;
+};
 
 static void system_control_work_handler(struct k_work *work);
 K_WORK_DELAYABLE_DEFINE(system_control_work, system_control_work_handler);
@@ -94,6 +101,12 @@ static void hall1_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t valu
 {
     ARG_UNUSED(attr);
     hall1_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
+}
+
+static void battery_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+    ARG_UNUSED(attr);
+    battery_notify_enabled = (value == BT_GATT_CCC_NOTIFY);
 }
 
 static void hall2_ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
@@ -122,24 +135,6 @@ static void system_control_work_handler(struct k_work *work)
     default:
         break;
     }
-}
-
-static ssize_t write_motor(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-                           const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
-{
-    ARG_UNUSED(conn);
-    ARG_UNUSED(attr);
-    ARG_UNUSED(offset);
-    ARG_UNUSED(flags);
-
-    const uint8_t *value = buf;
-
-    if (len >= 1U) {
-        motor_set_vibration(value[0]);
-        printk("Motor command: %u\n", value[0]);
-    }
-
-    return len;
 }
 
 static ssize_t write_led(struct bt_conn *conn, const struct bt_gatt_attr *attr,
@@ -200,6 +195,21 @@ static ssize_t read_calibration_status(struct bt_conn *conn, const struct bt_gat
     return bt_gatt_attr_read(conn, attr, buf, len, offset, &status, sizeof(status));
 }
 
+static ssize_t read_battery_status(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                   void *buf, uint16_t len, uint16_t offset)
+{
+    struct sensor_battery_status status;
+    struct ble_battery_payload payload;
+
+    ARG_UNUSED(attr);
+
+    sensor_read_battery(&status);
+    payload.millivolts = status.millivolts;
+    payload.percent = status.percent;
+
+    return bt_gatt_attr_read(conn, attr, buf, len, offset, &payload, sizeof(payload));
+}
+
 static ssize_t write_calibration_command(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                          const void *buf, uint16_t len, uint16_t offset,
                                          uint8_t flags)
@@ -258,10 +268,12 @@ BT_GATT_SERVICE_DEFINE(custom_srv,
                            NULL, NULL, NULL),
     BT_GATT_CCC(temp_ccc_cfg_changed,
                 BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_MOTOR,
-                           BT_GATT_CHRC_WRITE,
-                           BT_GATT_PERM_WRITE,
-                           NULL, write_motor, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_BATTERY,
+                           BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_READ,
+                           read_battery_status, NULL, NULL),
+    BT_GATT_CCC(battery_ccc_cfg_changed,
+                BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
     BT_GATT_CHARACTERISTIC(BT_UUID_CUSTOM_CHAR_HALL1,
                            BT_GATT_CHRC_NOTIFY,
                            BT_GATT_PERM_NONE,
@@ -317,4 +329,19 @@ int ble_service_notify_temperature(int32_t temperature)
 
     return bt_gatt_notify(NULL, &custom_srv.attrs[TEMP_NOTIFY_ATTR_INDEX],
                           &temperature, sizeof(temperature));
+}
+
+int ble_service_notify_battery(const struct sensor_battery_status *status)
+{
+    struct ble_battery_payload payload;
+
+    if (!battery_notify_enabled || !status) {
+        return 0;
+    }
+
+    payload.millivolts = status->millivolts;
+    payload.percent = status->percent;
+
+    return bt_gatt_notify(NULL, &custom_srv.attrs[BATTERY_NOTIFY_ATTR_INDEX],
+                          &payload, sizeof(payload));
 }

@@ -100,7 +100,7 @@ export function App() {
   }, []);
 
   const device = useCustomDevice(appendLog);
-  const ota = useMcuManager(appendLog);
+  const ota = useMcuManager(appendLog, device.bluetoothDevice, device.connected);
 
   const activeSlot = useMemo(() => ota.imageState.find((image) => image.active) ?? null, [ota.imageState]);
   const selectedSection = SECTIONS.find((section) => section.id === activeSection)!;
@@ -215,12 +215,12 @@ export function App() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed">
-                      현재 세션 제어를 담당합니다. 연결 및 연결 해제를 관리하며 빠른 설정 전환을 위한 제어를 수행합니다.
+                      메인 BLE 세션을 연결합니다. 연결되면 제어 notify와 OTA transport가 같은 디바이스 세션을 함께 사용합니다.
                     </p>
                     <div className="flex flex-wrap gap-3 mt-6 relative z-10">
                       <Button onClick={device.connect} disabled={device.connecting || device.connected} className="shadow-[0_4px_14px_rgba(37,99,235,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] h-11 px-6 rounded-xl bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border border-blue-700 transition-all duration-300">
                         <Bluetooth className="w-4 h-4 mr-2" />
-                        {device.connecting ? 'Connecting...' : 'Connect Control'}
+                        {device.connecting ? 'Connecting...' : 'Connect Device'}
                       </Button>
                       <Button variant="secondary" onClick={device.disconnect} disabled={!device.connected} className="h-11 px-6 rounded-xl border border-slate-200 shadow-sm">
                         <Unplug className="w-4 h-4 mr-2 text-slate-500" />
@@ -360,14 +360,11 @@ export function App() {
                     <StatusBadge tone={otaStatusTone}>{otaStatusLabel}</StatusBadge>
                   </CardHeader>
                   <CardContent className="space-y-6 mt-4">
-                    <SettingRow 
-                      title="MCUmgr 연결" 
-                      description="SMP over BLE 연결을 관리합니다." 
-                      control={
+                      <SettingRow 
+                        title="MCUmgr 연결" 
+                        description="메인 BLE 세션에 자동으로 붙습니다. 별도 기기 선택은 필요하지 않습니다." 
+                        control={
                         <div className="flex gap-2">
-                          <Button onClick={ota.connect} disabled={ota.connecting || ota.connected} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-                            <Bluetooth className="w-4 h-4 mr-2" /> {ota.connecting ? 'Connecting...' : 'Connect'}
-                          </Button>
                           <Button variant="outline" size="sm" onClick={() => void ota.refreshImageState()} disabled={!ota.connected || ota.busy}>
                             Read
                           </Button>
@@ -422,7 +419,7 @@ export function App() {
                         <Button onClick={() => void ota.upload()} disabled={!ota.connected || ota.busy || !ota.imageInfo} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
                           <Upload className="w-4 h-4 mr-2" /> Upload
                         </Button>
-                        <Button variant="outline" onClick={() => void ota.test()} disabled={!ota.connected || ota.busy || !ota.imageInfo} className="rounded-xl">
+                        <Button variant="outline" onClick={() => void ota.test()} disabled={!ota.connected || ota.busy || !ota.testTargetImage} className="rounded-xl">
                           <PlayCircle className="w-4 h-4 mr-2" /> Test
                         </Button>
                         <Button variant="outline" onClick={() => void ota.confirm()} disabled={!ota.connected || ota.busy || ota.imageState.length === 0} className="rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50">
@@ -453,7 +450,8 @@ export function App() {
                             </div>
                             <div className="flex flex-col gap-1.5 items-end">
                                <StatusBadge tone={image.active ? 'success' : 'neutral'}>{image.active ? 'Active' : 'Inactive'}</StatusBadge>
-                               <StatusBadge tone={image.confirmed ? 'success' : 'warning'}>{image.confirmed ? 'Confirmed' : 'Pending'}</StatusBadge>
+                               <StatusBadge tone={image.pending ? 'warning' : 'neutral'}>{image.pending ? 'Pending' : 'Not Pending'}</StatusBadge>
+                               <StatusBadge tone={image.confirmed ? 'success' : 'neutral'}>{image.confirmed ? 'Confirmed' : 'Unconfirmed'}</StatusBadge>
                             </div>
                           </div>
                         ))

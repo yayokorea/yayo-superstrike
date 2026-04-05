@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { McuManagerClient, hashHexToBytes } from './McuManagerClient';
+import { McuManagerClient } from './McuManagerClient';
 import type { ImageInfo, ImageSlot } from './types';
 
 type Logger = (scope: string, message: string, level?: 'info' | 'success' | 'warning' | 'error') => void;
 
-export function useMcuManager(log: Logger) {
+function getTestTargetImage(images: ImageSlot[]) {
+  return images.find((image) => image.slot === 1 && !image.active && image.hash)
+    ?? images.find((image) => !image.active && image.hash)
+    ?? null;
+}
+
+export function useMcuManager(log: Logger, bluetoothDevice: BluetoothDevice | null = null, bluetoothConnected = false) {
   const client = useMemo(() => new McuManagerClient(log), [log]);
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -17,17 +23,73 @@ export function useMcuManager(log: Logger) {
   const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
   const [imageState, setImageState] = useState<ImageSlot[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const testTargetImage = useMemo(() => getTestTargetImage(imageState), [imageState]);
 
   useEffect(() => {
     return client.onConnectionChange(setConnected);
   }, [client]);
+
+  useEffect(() => {
+    if (!bluetoothDevice || !bluetoothConnected) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      setConnecting(true);
+      setError(null);
+      setStatusMessage('Attaching OTA transport to active BLE session');
+
+      try {
+        await client.attachDevice(bluetoothDevice);
+
+        if (cancelled) {
+          return;
+        }
+
+        setConnected(true);
+        const images = await client.readImageState();
+
+        if (cancelled) {
+          return;
+        }
+
+        setImageState(images);
+        setStatusMessage('OTA transport ready');
+      } catch (unknownError) {
+        if (cancelled) {
+          return;
+        }
+
+        const message = unknownError instanceof Error ? unknownError.message : 'OTA connection failed';
+        setError(message);
+        setConnected(false);
+        setStatusMessage(message);
+        log('OTA', message, 'error');
+      } finally {
+        if (!cancelled) {
+          setConnecting(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bluetoothConnected, bluetoothDevice, client, log]);
 
   const connect = async () => {
     setConnecting(true);
     setError(null);
     setStatusMessage('Connecting to MCUmgr transport');
     try {
-      await client.connect();
+      if (bluetoothDevice && bluetoothConnected) {
+        await client.attachDevice(bluetoothDevice);
+      } else {
+        await client.connect();
+      }
+
       setConnected(true);
       const images = await client.readImageState();
       setImageState(images);
@@ -126,16 +188,16 @@ export function useMcuManager(log: Logger) {
   };
 
   const test = async () => {
-    if (!imageInfo) {
-      setError('No validated image selected');
+    if (!testTargetImage?.hash) {
+      setError('No testable image found on device');
       return;
     }
 
     setBusy(true);
     try {
-      await client.test(hashHexToBytes(imageInfo.hash));
-      setStatusMessage('Image marked for test boot');
-      log('OTA', 'Image marked for test boot', 'success');
+      await client.test(testTargetImage.hash);
+      setStatusMessage(`Slot ${testTargetImage.slot} image marked for test boot`);
+      log('OTA', `Slot ${testTargetImage.slot} image marked for test boot`, 'success');
       await refreshImageState();
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : 'Test command failed';
@@ -197,6 +259,7 @@ export function useMcuManager(log: Logger) {
     imageInfo,
     imageState,
     error,
+    testTargetImage,
     deviceName: client.getDeviceName(),
     connect,
     disconnect,

@@ -33,6 +33,7 @@ export interface MCUManagerMessage {
 export interface MCUManagerInstance {
   readonly name: string | null;
   connect(filters?: BluetoothLEScanFilter[]): Promise<void>;
+  attachDevice?(device: BluetoothDevice): Promise<void>;
   disconnect(): void;
   onConnecting(callback: () => void): MCUManagerInstance;
   onConnect(callback: () => void): MCUManagerInstance;

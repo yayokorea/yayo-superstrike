@@ -16,11 +16,21 @@ export function useCustomDevice(log: Logger) {
   const service = useMemo(() => new CustomDeviceService(log), [log]);
   const [snapshot, setSnapshot] = useState<DeviceSnapshot>(EMPTY_SNAPSHOT);
   const [connecting, setConnecting] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [bluetoothDevice, setBluetoothDevice] = useState<BluetoothDevice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = service.subscribe(setSnapshot);
-    return () => { unsubscribe(); };
+    const unsubscribeConnection = service.onConnectionChange((nextConnected, nextDevice) => {
+      setConnected(nextConnected);
+      setBluetoothDevice(nextDevice);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeConnection();
+    };
   }, [service]);
 
   const connect = async () => {
@@ -54,7 +64,8 @@ export function useCustomDevice(log: Logger) {
   return {
     snapshot,
     connecting,
-    connected: service.isConnected(),
+    connected,
+    bluetoothDevice,
     error,
     connect,
     disconnect,

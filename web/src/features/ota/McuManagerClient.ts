@@ -1,8 +1,23 @@
 import type { MCUManagerInstance, MCUManagerMessage } from '../../types/mcumgr-web';
+import { CUSTOM_SERVICE_UUID, SMP_SERVICE_UUID } from '../device/constants';
 import type { ImageInfo, ImageSlot } from './types';
 
 const CBOR_SCRIPT = 'https://cdn.jsdelivr.net/gh/boogie/mcumgr-web@master/js/cbor.js';
 const MCUMGR_SCRIPT = 'https://cdn.jsdelivr.net/gh/boogie/mcumgr-web@master/js/mcumgr.js';
+const OTA_SCAN_FILTERS: BluetoothLEScanFilter[] = [
+  { services: [SMP_SERVICE_UUID] },
+  { services: [CUSTOM_SERVICE_UUID] },
+];
+
+type InternalMCUManagerInstance = MCUManagerInstance & {
+  _device?: BluetoothDevice | null;
+  _connect?: (delay?: number) => void;
+  _disconnected?: (error?: Error | null) => Promise<void> | void;
+  _userRequestedDisconnect?: boolean;
+  _sharedDevice?: BluetoothDevice | null;
+  _sharedDeviceDisconnectListener?: EventListener;
+};
+
 type Logger = (scope: string, message: string, level?: 'info' | 'success' | 'warning' | 'error') => void;
 
 function loadScript(src: string) {
@@ -80,6 +95,7 @@ export class McuManagerClient {
   private connectionListener: ((connected: boolean) => void) | null = null;
   private pendingConnectResolver: (() => void) | null = null;
   private pendingConnectRejecter: ((error: Error) => void) | null = null;
+  private attachedDevice: BluetoothDevice | null = null;
 
   constructor(private readonly log: Logger) {}
 
@@ -117,6 +133,7 @@ export class McuManagerClient {
         this.pendingConnectRejecter?.(new Error('SMP transport disconnected before ready'));
         this.pendingConnectResolver = null;
         this.pendingConnectRejecter = null;
+        this.attachedDevice = null;
         this.connectionListener?.(false);
         this.log('OTA', 'SMP transport disconnected', 'warning');
       })
@@ -139,12 +156,17 @@ export class McuManagerClient {
   }
 
   async connect() {
+    if (this.attachedDevice?.gatt) {
+      await this.attachDevice(this.attachedDevice);
+      return;
+    }
+
     const manager = await this.initialize();
     await new Promise<void>((resolve, reject) => {
       this.pendingConnectResolver = resolve;
       this.pendingConnectRejecter = reject;
 
-      manager.connect().catch((error: unknown) => {
+      manager.connect(OTA_SCAN_FILTERS).catch((error: unknown) => {
         const wrapped = error instanceof Error ? error : new Error('Failed to start OTA connection');
         this.pendingConnectResolver = null;
         this.pendingConnectRejecter = null;
@@ -153,8 +175,60 @@ export class McuManagerClient {
     });
   }
 
+  async attachDevice(device: BluetoothDevice) {
+    const manager = await this.initialize() as InternalMCUManagerInstance;
+
+    if (!manager._connect) {
+      throw new Error('MCUManager runtime does not support device reuse');
+    }
+
+    if (manager._sharedDevice && manager._sharedDevice !== device && manager._sharedDeviceDisconnectListener) {
+      manager._sharedDevice.removeEventListener('gattserverdisconnected', manager._sharedDeviceDisconnectListener);
+    }
+
+    this.attachedDevice = device;
+
+    await new Promise<void>((resolve, reject) => {
+      this.pendingConnectResolver = resolve;
+      this.pendingConnectRejecter = reject;
+
+      manager._device = device;
+      manager._userRequestedDisconnect = false;
+
+      const disconnectListener: EventListener = async () => {
+        this.log('OTA', 'Shared BLE device disconnected', 'warning');
+        await manager._disconnected?.();
+      };
+
+      if (manager._sharedDevice === device && manager._sharedDeviceDisconnectListener) {
+        device.removeEventListener('gattserverdisconnected', manager._sharedDeviceDisconnectListener);
+      }
+
+      manager._sharedDevice = device;
+      manager._sharedDeviceDisconnectListener = disconnectListener;
+      device.addEventListener('gattserverdisconnected', disconnectListener);
+
+      try {
+        manager._connect(0);
+      } catch (error) {
+        const wrapped = error instanceof Error ? error : new Error('Failed to attach OTA transport');
+        this.pendingConnectResolver = null;
+        this.pendingConnectRejecter = null;
+        reject(wrapped);
+      }
+    });
+  }
+
   async disconnect() {
-    const manager = await this.initialize();
+    const manager = await this.initialize() as InternalMCUManagerInstance;
+
+    if (this.attachedDevice?.gatt?.connected) {
+      this.detachSharedDevice(manager);
+      this.connectionListener?.(false);
+      return;
+    }
+
+    this.attachedDevice = null;
     manager.disconnect();
     this.connectionListener?.(false);
   }
@@ -221,6 +295,17 @@ export class McuManagerClient {
 
   getDeviceName() {
     return this.manager?.name ?? null;
+  }
+
+  private detachSharedDevice(manager: InternalMCUManagerInstance) {
+    if (manager._sharedDevice && manager._sharedDeviceDisconnectListener) {
+      manager._sharedDevice.removeEventListener('gattserverdisconnected', manager._sharedDeviceDisconnectListener);
+    }
+
+    manager._sharedDevice = null;
+    manager._sharedDeviceDisconnectListener = undefined;
+    this.attachedDevice = null;
+    void manager._disconnected?.();
   }
 
   private handleMessage(message: MCUManagerMessage) {

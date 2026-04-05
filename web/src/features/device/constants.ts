@@ -1,4 +1,5 @@
 export const CUSTOM_SERVICE_UUID = '2cfd0a83-f013-4fe2-8dbd-fe3a5f4a64ff';
+export const SMP_SERVICE_UUID = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
 
 export const DEVICE_CHARACTERISTICS = {
   temperature: '2cfd0a85-f013-4fe2-8dbd-fe3a5f4a64ff',

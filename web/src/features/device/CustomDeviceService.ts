@@ -1,4 +1,4 @@
-import { CUSTOM_SERVICE_UUID, DEVICE_CHARACTERISTICS, SYSTEM_COMMANDS } from './constants';
+import { CUSTOM_SERVICE_UUID, DEVICE_CHARACTERISTICS, SMP_SERVICE_UUID, SYSTEM_COMMANDS } from './constants';
 
 export type DeviceSnapshot = {
   name: string | null;
@@ -12,6 +12,7 @@ export type DeviceSnapshot = {
 type Logger = (scope: string, message: string, level?: 'info' | 'success' | 'warning' | 'error') => void;
 
 type SnapshotListener = (snapshot: DeviceSnapshot) => void;
+type ConnectionListener = (connected: boolean, device: BluetoothDevice | null) => void;
 
 export class CustomDeviceService {
   private device: BluetoothDevice | null = null;
@@ -27,7 +28,10 @@ export class CustomDeviceService {
 
   private systemControl: BluetoothRemoteGATTCharacteristic | null = null;
   private listeners = new Set<SnapshotListener>();
+  private connectionListeners = new Set<ConnectionListener>();
   private notificationCleanup: Array<() => void> = [];
+  private userRequestedDisconnect = false;
+  private reconnectAttempts = 0;
 
   constructor(private readonly log: Logger) {}
 
@@ -37,34 +41,28 @@ export class CustomDeviceService {
     return () => this.listeners.delete(listener);
   }
 
+  onConnectionChange(listener: ConnectionListener) {
+    this.connectionListeners.add(listener);
+    listener(this.isConnected(), this.device);
+    return () => this.connectionListeners.delete(listener);
+  }
+
   async connect() {
     this.teardown();
+    this.userRequestedDisconnect = false;
+    this.reconnectAttempts = 0;
     this.log('BLE', 'Requesting custom control device');
     this.device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [CUSTOM_SERVICE_UUID] }],
+      optionalServices: [SMP_SERVICE_UUID],
     });
 
     this.device.addEventListener('gattserverdisconnected', this.handleDisconnect);
-    this.server = await this.device.gatt?.connect() ?? null;
-
-    if (!this.server) {
-      throw new Error('GATT server connection failed');
-    }
-
-    const service = await this.server.getPrimaryService(CUSTOM_SERVICE_UUID);
-    this.systemControl = await service.getCharacteristic(DEVICE_CHARACTERISTICS.systemControl);
-
-    await this.bindTemperature(service);
-    await this.bindBattery(service);
-    await this.bindHall(service, DEVICE_CHARACTERISTICS.hall1, 'hall1');
-    await this.bindHall(service, DEVICE_CHARACTERISTICS.hall2, 'hall2');
-
-    this.snapshot = { ...this.snapshot, name: this.device.name ?? 'Unknown device' };
-    this.emit();
-    this.log('BLE', `Connected to ${this.snapshot.name ?? 'device'}`, 'success');
+    await this.connectToDevice(this.device, false);
   }
 
   disconnect() {
+    this.userRequestedDisconnect = true;
     this.device?.gatt?.disconnect();
   }
 
@@ -79,6 +77,10 @@ export class CustomDeviceService {
 
   isConnected() {
     return Boolean(this.device?.gatt?.connected);
+  }
+
+  getDevice() {
+    return this.device;
   }
 
   getSnapshot() {
@@ -158,8 +160,63 @@ export class CustomDeviceService {
       hall2: null,
     };
     this.emit();
+    this.emitConnectionChange();
     this.log('BLE', 'Custom control transport disconnected', 'warning');
+
+    if (this.userRequestedDisconnect || !this.device) {
+      this.device = null;
+      this.userRequestedDisconnect = false;
+      this.reconnectAttempts = 0;
+      return;
+    }
+
+    void this.reconnect();
   };
+
+  private async connectToDevice(device: BluetoothDevice, isReconnect: boolean) {
+    this.server = await device.gatt?.connect() ?? null;
+
+    if (!this.server) {
+      throw new Error('GATT server connection failed');
+    }
+
+    const service = await this.server.getPrimaryService(CUSTOM_SERVICE_UUID);
+    this.systemControl = await service.getCharacteristic(DEVICE_CHARACTERISTICS.systemControl);
+
+    await this.bindTemperature(service);
+    await this.bindBattery(service);
+    await this.bindHall(service, DEVICE_CHARACTERISTICS.hall1, 'hall1');
+    await this.bindHall(service, DEVICE_CHARACTERISTICS.hall2, 'hall2');
+
+    this.snapshot = { ...this.snapshot, name: device.name ?? 'Unknown device' };
+    this.emit();
+    this.emitConnectionChange();
+    this.reconnectAttempts = 0;
+    this.log('BLE', `${isReconnect ? 'Reconnected to' : 'Connected to'} ${this.snapshot.name ?? 'device'}`, 'success');
+  }
+
+  private async reconnect() {
+    if (!this.device || this.userRequestedDisconnect) {
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    const delayMs = Math.min(500 * this.reconnectAttempts, 3000);
+    this.log('BLE', `Attempting reconnect (${this.reconnectAttempts})`, 'warning');
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+
+    if (!this.device || this.userRequestedDisconnect) {
+      return;
+    }
+
+    try {
+      await this.connectToDevice(this.device, true);
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : 'Reconnect failed';
+      this.log('BLE', message, 'error');
+      void this.reconnect();
+    }
+  }
 
   private teardown() {
     for (const cleanup of this.notificationCleanup) {
@@ -175,6 +232,13 @@ export class CustomDeviceService {
   private emit() {
     for (const listener of this.listeners) {
       listener(this.snapshot);
+    }
+  }
+
+  private emitConnectionChange() {
+    const connected = this.isConnected();
+    for (const listener of this.connectionListeners) {
+      listener(connected, this.device);
     }
   }
 }

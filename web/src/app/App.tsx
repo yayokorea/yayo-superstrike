@@ -59,12 +59,12 @@ function formatNumber(value: number | null, digits = 2, unit = '') {
 
 function SettingRow({ title, description, control }: { title: string; description: string; control: ReactNode }) {
   return (
-    <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 p-4 rounded-xl border bg-card/50 hover:bg-card/80 transition-colors shadow-sm overflow-hidden">
+    <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 py-4 px-1 group transition-colors">
       <div className="flex-1 min-w-0 pr-4">
-        <h3 className="font-semibold text-sm text-foreground">{title}</h3>
-        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{description}</p>
+        <h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100 tracking-tight transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">{title}</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed tracking-wide">{description}</p>
       </div>
-      <div className="shrink-0 w-full lg:w-auto max-w-full overflow-x-auto flex pb-1 -mb-1">{control}</div>
+      <div className="shrink-0 w-full lg:w-auto max-w-full overflow-x-auto flex">{control}</div>
     </div>
   );
 }
@@ -109,9 +109,11 @@ export function App() {
   const otaStatusLabel = ota.uploadState === 'completed' ? 'Upload Complete' : ota.uploadState === 'error' ? 'Upload Error' : ota.uploadState === 'uploading' ? 'Uploading' : ota.connected ? 'Connected' : 'Disconnected';
 
   return (
-    <div className="flex h-screen w-full bg-slate-50/50 dark:bg-slate-950 font-sans selection:bg-blue-200 selection:text-blue-900">
+    <div className="flex h-screen w-full bg-slate-50 dark:bg-[#020817] font-sans selection:bg-blue-200 selection:text-blue-900 relative">
+      {/* Subtle Ambient Background */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/40 via-transparent to-transparent dark:from-blue-900/20 dark:via-transparent dark:to-transparent pointer-events-none z-0" />
       {/* Sidebar */}
-      <aside className="w-72 border-r border-slate-200/60 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-2xl flex flex-col shadow-[4px_0_24px_-4px_rgba(0,0,0,0.02)] z-20">
+      <aside className="hidden md:flex w-72 border-r border-slate-200/60 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-2xl flex flex-col shadow-[4px_0_24px_-4px_rgba(0,0,0,0.02)] z-20">
         <div className="p-6 pb-2 flex items-center gap-3">
           <div className="flex w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-500 text-white items-center justify-center font-bold text-xl shadow-lg ring-1 ring-blue-500/20">S</div>
           <div>
@@ -138,18 +140,19 @@ export function App() {
               <button
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
-                className={`w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all duration-200 ${
+                className={`w-full flex items-start gap-3 p-3 rounded-2xl text-left transition-all duration-300 relative group ${
                   isActive 
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 shadow-sm' 
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+                    ? 'bg-blue-50/80 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ring-1 ring-black/5 dark:ring-white/5' 
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                <div className={`p-2 rounded-lg shrink-0 ${isActive ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-600 dark:bg-blue-500 rounded-r-full" />}
+                <div className={`p-2.5 rounded-xl shrink-0 transition-colors duration-300 ${isActive ? 'bg-white dark:bg-blue-500/20 shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'bg-slate-100 dark:bg-slate-800 group-hover:bg-white dark:group-hover:bg-slate-700'}`}>
                   {section.icon}
                 </div>
-                <div className="mt-0.5">
-                  <div className="font-semibold text-sm">{section.label}</div>
-                  <div className={`text-[11px] leading-snug mt-0.5 ${isActive ? 'text-blue-500/80 dark:text-blue-400/80' : 'text-slate-400'}`}>{section.description}</div>
+                <div className="mt-0.5 flex-1 min-w-0">
+                  <div className="font-semibold text-sm tracking-tight">{section.label}</div>
+                  <div className={`text-[11px] leading-snug mt-0.5 tracking-wide truncate ${isActive ? 'text-blue-600/70 dark:text-blue-400/70' : 'text-slate-400 dark:text-slate-500'}`}>{section.description}</div>
                 </div>
               </button>
             )
@@ -164,44 +167,47 @@ export function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full min-w-0 bg-[#FAFBFF] dark:bg-slate-950/50 relative overflow-hidden">
+      <main className="flex-1 flex flex-col h-full min-w-0 bg-[#FAFBFF] dark:bg-slate-950/50 relative overflow-hidden pb-16 md:pb-0">
         {/* Topbar */}
-        <header className="h-[88px] px-8 flex items-center justify-between bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/80 sticky top-0 z-10">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+        <header className="h-[72px] md:h-[88px] px-4 md:px-8 flex items-center justify-between bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/80 sticky top-0 z-10">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3 truncate">
+              <div className="flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl bg-blue-100/50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 shrink-0">
+                {selectedSection.icon}
+              </div>
               {selectedSection.label}
             </h1>
-            <p className="text-sm text-slate-500 font-medium mt-0.5 tracking-wide">{selectedSection.description}</p>
+            <p className="hidden sm:block text-xs md:text-sm text-slate-500 font-medium mt-0.5 tracking-wide truncate">{selectedSection.description}</p>
           </div>
-          <div className="flex gap-4">
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500">
-                <Battery className="w-4 h-4" />
+          <div className="flex gap-2 md:gap-4 shrink-0">
+            <div className="flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+              <div className="flex items-center justify-center w-6 h-6 md:w-8 md:h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 shrink-0">
+                <Battery className="w-3 h-3 md:w-4 md:h-4" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Battery</span>
-                <strong className="text-sm font-semibold">{device.snapshot.batteryPercent === null ? '--' : `${device.snapshot.batteryPercent}%`}</strong>
+                <span className="hidden md:block text-[10px] font-bold tracking-widest text-slate-400 uppercase">Battery</span>
+                <strong className="text-xs md:text-sm font-semibold">{device.snapshot.batteryPercent === null ? '--' : `${device.snapshot.batteryPercent}%`}</strong>
               </div>
             </div>
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500">
-                <Cpu className="w-4 h-4" />
+            <div className="flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+              <div className="flex items-center justify-center w-6 h-6 md:w-8 md:h-8 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 shrink-0">
+                <Cpu className="w-3 h-3 md:w-4 md:h-4" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Firmware</span>
-                <strong className="text-sm font-semibold">{activeSlot?.version ?? '--'}</strong>
+                <span className="hidden md:block text-[10px] font-bold tracking-widest text-slate-400 uppercase">Firmware</span>
+                <strong className="text-xs md:text-sm font-semibold truncate max-w-[60px] md:max-w-none">{activeSlot?.version ?? '--'}</strong>
               </div>
             </div>
           </div>
         </header>
 
         {/* Dynamic Content */}
-        <div className="flex-1 overflow-y-auto p-8 relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           <div className="max-w-5xl mx-auto space-y-6">
             
             {activeSection === 'device' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <Card className="border-none shadow-sm bg-gradient-to-br from-white to-blue-50/30 overflow-hidden ring-1 ring-slate-200/50">
+                <Card className="relative border-none shadow-sm bg-gradient-to-br from-white to-blue-50/30 overflow-hidden ring-1 ring-slate-200/50">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
                   <CardHeader className="pb-4">
                     <CardDescription className="text-xs font-bold tracking-widest uppercase text-blue-500 mb-1">Connection State</CardDescription>
@@ -212,7 +218,7 @@ export function App() {
                       현재 세션 제어를 담당합니다. 연결 및 연결 해제를 관리하며 빠른 설정 전환을 위한 제어를 수행합니다.
                     </p>
                     <div className="flex flex-wrap gap-3 mt-6 relative z-10">
-                      <Button onClick={device.connect} disabled={device.connecting || device.connected} className="shadow-md h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
+                      <Button onClick={device.connect} disabled={device.connecting || device.connected} className="shadow-[0_4px_14px_rgba(37,99,235,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] h-11 px-6 rounded-xl bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border border-blue-700 transition-all duration-300">
                         <Bluetooth className="w-4 h-4 mr-2" />
                         {device.connecting ? 'Connecting...' : 'Connect Control'}
                       </Button>
@@ -240,7 +246,7 @@ export function App() {
                         {l: 'Temperature', v: formatNumber(device.snapshot.temperatureC, 2, ' °C')},
                         {l: 'Active Slot', v: activeSlot ? `Slot ${activeSlot.slot}` : '--'}
                       ].map((info) => (
-                        <div key={info.l} className="bg-slate-50/50 dark:bg-slate-900 border rounded-2xl p-4 flex flex-col justify-center">
+                        <div key={info.l} className="bg-slate-50/50 dark:bg-slate-900 border rounded-2xl p-4 flex flex-col justify-center min-w-0">
                           <span className="text-[11px] font-bold text-slate-400 tracking-wide uppercase">{info.l}</span>
                           <strong className="text-base mt-1 text-slate-800 dark:text-slate-100 truncate">{info.v}</strong>
                         </div>
@@ -254,24 +260,26 @@ export function App() {
                       <CardTitle>장치 상태 프리뷰</CardTitle>
                     </CardHeader>
                     <CardContent className="flex justify-center items-center py-6">
-                      <div className="w-full max-w-[280px] h-[220px] relative flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
-                          <div className="w-24 h-32 rounded-3xl bg-white shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] ring-1 ring-slate-200/50 flex flex-col justify-between items-center py-4 relative">
+                      <div className="w-full max-w-[280px] h-[220px] relative flex flex-col items-center justify-center p-6 border border-slate-200/50 dark:border-slate-800 rounded-3xl bg-slate-50/30 dark:bg-slate-900/30 shadow-[inset_0_2px_20px_rgba(0,0,0,0.02)] overflow-hidden">
+                          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-500/5 via-transparent to-transparent opacity-50" />
+                          <div className="w-24 h-32 rounded-[24px] bg-gradient-to-b from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 shadow-[0_15px_35px_-10px_rgba(0,0,0,0.15),inset_0_2px_10px_rgba(255,255,255,0.9),inset_0_-2px_10px_rgba(0,0,0,0.05)] dark:shadow-[0_15px_35px_-10px_rgba(0,0,0,0.4),inset_0_2px_10px_rgba(255,255,255,0.05),inset_0_-2px_10px_rgba(0,0,0,0.2)] ring-1 ring-slate-200/50 dark:ring-white/10 flex flex-col justify-between items-center py-4 relative z-10 transition-transform duration-700 hover:scale-105 hover:-rotate-1">
                             {/* Scroll wheel mock */}
-                            <div className="w-2 h-6 rounded-full bg-slate-200/60 border border-slate-300"></div>
+                            <div className="w-2 h-6 rounded-full bg-gradient-to-b from-slate-200 to-slate-300 dark:from-slate-600 dark:to-slate-700 shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]"></div>
                             {/* Logo mock */}
-                            <div className="w-4 h-4 rounded-full bg-blue-100 opacity-50"></div>
+                            <div className="w-4 h-4 rounded-full bg-blue-500/10 dark:bg-blue-400/20 shadow-[inset_0_1px_3px_rgba(0,0,0,0.1)] flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 rounded-full bg-blue-500/40 dark:bg-blue-400/50"></div>
+                            </div>
                           </div>
-                          
-                          <div className="absolute bottom-6 left-6 bg-white shadow-sm border rounded-full px-3 py-1.5 text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
-                            H1 <span className="text-slate-900">{device.snapshot.hall1 ?? '--'}</span>
+
+                          <div className="absolute bottom-5 left-5 bg-white/80 dark:bg-slate-800/80 backdrop-blur shadow-sm border border-white/50 dark:border-slate-700 rounded-full px-3 py-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 z-10">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+                            H1 <span className="text-slate-900 dark:text-slate-200">{device.snapshot.hall1 ?? '--'}</span>
                           </div>
-                          <div className="absolute bottom-6 right-6 bg-white shadow-sm border rounded-full px-3 py-1.5 text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
-                            H2 <span className="text-slate-900">{device.snapshot.hall2 ?? '--'}</span>
+                          <div className="absolute bottom-5 right-5 bg-white/80 dark:bg-slate-800/80 backdrop-blur shadow-sm border border-white/50 dark:border-slate-700 rounded-full px-3 py-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 z-10">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
+                            H2 <span className="text-slate-900 dark:text-slate-200">{device.snapshot.hall2 ?? '--'}</span>
                           </div>
-                      </div>
-                    </CardContent>
+                      </div>                    </CardContent>
                   </Card>
                 </div>
               </div>
@@ -283,7 +291,7 @@ export function App() {
                   <CardHeader>
                     <CardTitle>입력 반응성 설정</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     <SettingRow title="Button Debounce" description="반응성 조정 후보입니다." control={<Segment values={['0ms', '1ms', '2ms', '4ms', '8ms']} active="4ms" />} />
                     <SettingRow title="Sleep Timeout" description="절전 진입 시간 설정입니다." control={<Segment values={['30s', '1m', '2m', '5m', '10m']} active="1m" />} />
                   </CardContent>
@@ -292,7 +300,7 @@ export function App() {
                   <CardHeader>
                     <CardTitle>성능 프로필 프리뷰</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     <SettingRow title="Polling Feel" description="Polling Rate 연계 튜닝" control={<Segment values={['Eco', 'Balanced', 'Fast']} active="Balanced" />} />
                     <div className="mt-6 p-6 border rounded-xl bg-slate-50">
                       <div className="flex justify-between items-center mb-4">
@@ -333,7 +341,7 @@ export function App() {
                     <CardDescription className="uppercase tracking-widest text-[10px] font-bold">Calibration</CardDescription>
                     <CardTitle>센서 캘리브레이션</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     <SettingRow title="Trigger Threshold" description="최적화된 아날로그 입력 임계값 설정" control={<div className="w-[180px]"><Slider defaultValue={[50]} max={100} step={50} /><div className="flex justify-between mt-2 text-[10px] text-slate-500 font-medium"><span>Low</span><span>Normal</span><span>High</span></div></div>} />
                     <SettingRow title="Calibration Workflow" description="Idle/Press 보정 액션" control={<Button variant="outline" size="sm">Coming Soon</Button>} />
                   </CardContent>
@@ -380,10 +388,12 @@ export function App() {
                           onChange={(event) => void ota.selectFile(event.target.files?.[0] ?? null)}
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         />
-                        <div className="flex items-center justify-center w-full min-h-[120px] border-2 border-dashed border-blue-200 dark:border-blue-900 rounded-xl bg-blue-50/50 dark:bg-blue-900/10 text-slate-500 transition-colors hover:bg-blue-50">
-                          <div className="flex flex-col items-center gap-2 pointer-events-none">
-                            <Upload className="w-8 h-8 text-blue-400" />
-                            <span className="text-sm font-medium">클릭하거나 파일을 여기로 드래그 하세요 (.bin, .img)</span>
+                        <div className="flex items-center justify-center w-full min-h-[140px] border-2 border-dashed border-blue-200/60 dark:border-blue-800/40 rounded-2xl bg-blue-50/30 dark:bg-blue-950/20 text-slate-500 transition-all duration-300 hover:bg-blue-50/80 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700/50 group">
+                          <div className="flex flex-col items-center gap-3 pointer-events-none">
+                            <div className="w-12 h-12 rounded-full bg-blue-100/50 dark:bg-blue-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                              <Upload className="w-6 h-6 text-blue-500 dark:text-blue-400" />
+                            </div>
+                            <span className="text-sm font-medium tracking-wide">클릭하거나 파일을 여기로 드래그 하세요 (.bin, .img)</span>
                           </div>
                         </div>
                       </div>
@@ -476,9 +486,32 @@ export function App() {
           </div>
         </div>
 
+        
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-6 left-4 right-4 h-16 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.1)] rounded-3xl z-50 flex items-center justify-around px-2">
+        {SECTIONS.map((section) => {
+          const isActive = section.id === activeSection;
+          return (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              className={`flex flex-col items-center justify-center w-14 h-full gap-1 transition-all duration-300 relative ${
+                isActive ? 'text-blue-600 dark:text-blue-400 scale-105' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              {isActive && <div className="absolute top-1 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />}
+              <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-blue-50 dark:bg-blue-500/20' : ''}`}>
+                 <span className={isActive ? 'opacity-100' : 'opacity-70'}>{section.icon}</span>
+              </div>
+              <span className={`text-[9px] tracking-wide leading-none transition-all duration-300 ${isActive ? 'font-bold opacity-100' : 'font-medium opacity-70'}`}>{section.label}</span>
+            </button>
+          )
+        })}
+      </nav>
+
         {/* Logs Drawer overlay using absolute positioning at bottom, or inside layout */}
         {showLogs && (
-          <div className="absolute inset-x-0 bottom-0 bg-white/95 backdrop-blur-xl border-t shadow-[0_-10px_40px_rgba(0,0,0,0.05)] h-64 flex flex-col z-30 animate-in slide-in-from-bottom-8">
+          <div className="absolute inset-x-0 bottom-[64px] md:bottom-0 bg-white/95 backdrop-blur-xl border-t shadow-[0_-10px_40px_rgba(0,0,0,0.05)] h-64 flex flex-col z-30 animate-in slide-in-from-bottom-8">
             <div className="flex items-center justify-between px-6 py-3 border-b bg-slate-50/80">
               <div className="flex items-center gap-3">
                 <Terminal className="w-4 h-4 text-slate-500" />

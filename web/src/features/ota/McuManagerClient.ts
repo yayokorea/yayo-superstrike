@@ -177,8 +177,9 @@ export class McuManagerClient {
 
   async attachDevice(device: BluetoothDevice) {
     const manager = await this.initialize() as InternalMCUManagerInstance;
+    const connectTransport = manager._connect;
 
-    if (!manager._connect) {
+    if (!connectTransport) {
       throw new Error('MCUManager runtime does not support device reuse');
     }
 
@@ -209,7 +210,7 @@ export class McuManagerClient {
       device.addEventListener('gattserverdisconnected', disconnectListener);
 
       try {
-        manager._connect(0);
+        connectTransport(0);
       } catch (error) {
         const wrapped = error instanceof Error ? error : new Error('Failed to attach OTA transport');
         this.pendingConnectResolver = null;

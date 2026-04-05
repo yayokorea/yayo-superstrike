@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CustomDeviceService, type DeviceSnapshot } from './CustomDeviceService';
+import { CAL_COMMANDS } from './constants';
 
 type Logger = (scope: string, message: string, level?: 'info' | 'success' | 'warning' | 'error') => void;
 
@@ -10,6 +11,7 @@ const EMPTY_SNAPSHOT: DeviceSnapshot = {
   batteryVoltage: null,
   hall1: null,
   hall2: null,
+  calStatus: null,
 };
 
 export function useCustomDevice(log: Logger) {
@@ -61,6 +63,26 @@ export function useCustomDevice(log: Logger) {
     }
   };
 
+  const refreshCalibrationStatus = async () => {
+    try {
+      await service.refreshCalibrationStatus();
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : 'Refresh failed';
+      setError(message);
+      log('BLE', message, 'error');
+    }
+  };
+
+  const sendCalibrationCommand = async (command: number) => {
+    try {
+      await service.sendCalibrationCommand(command);
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : 'Calibration command failed';
+      setError(message);
+      log('BLE', message, 'error');
+    }
+  };
+
   return {
     snapshot,
     connecting,
@@ -70,5 +92,8 @@ export function useCustomDevice(log: Logger) {
     connect,
     disconnect,
     reboot,
+    refreshCalibrationStatus,
+    sendCalibrationCommand,
+    CAL_COMMANDS,
   };
 }

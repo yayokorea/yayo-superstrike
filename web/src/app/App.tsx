@@ -319,31 +319,76 @@ export function App() {
 
             {activeSection === 'sensor' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <Card className="shadow-sm border-slate-200/60">
-                  <CardHeader>
-                    <CardDescription className="uppercase tracking-widest text-[10px] font-bold">Live Data</CardDescription>
-                    <CardTitle>Hall 센서 리드오프</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
-                      {[{l: 'Hall Left', v: device.snapshot.hall1 ?? '--'}, {l: 'Hall Right', v: device.snapshot.hall2 ?? '--'}, {l: 'Temperature', v: formatNumber(device.snapshot.temperatureC, 2, ' °C')}, {l: 'Battery', v: device.snapshot.batteryPercent === null ? '--' : `${device.snapshot.batteryPercent}%`}].map((item) => (
-                        <div key={item.l} className="bg-slate-50 border rounded-xl p-4">
-                          <div className="text-[11px] font-bold text-slate-400 uppercase">{item.l}</div>
-                          <div className="text-lg font-bold text-slate-800 mt-1">{item.v}</div>
+                <div className="space-y-6">
+                  <Card className="shadow-sm border-slate-200/60">
+                    <CardHeader>
+                      <CardDescription className="uppercase tracking-widest text-[10px] font-bold">Live Data</CardDescription>
+                      <CardTitle>Hall 센서 리드오프</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4">
+                        {[{l: 'Hall Left', v: device.snapshot.hall1 ?? '--'}, {l: 'Hall Right', v: device.snapshot.hall2 ?? '--'}, {l: 'Temperature', v: formatNumber(device.snapshot.temperatureC, 2, ' °C')}, {l: 'Battery', v: device.snapshot.batteryPercent === null ? '--' : `${device.snapshot.batteryPercent}%`}].map((item) => (
+                          <div key={item.l} className="bg-slate-50 dark:bg-slate-900 border rounded-xl p-4">
+                            <div className="text-[11px] font-bold text-slate-400 uppercase">{item.l}</div>
+                            <div className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">{item.v}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="shadow-sm border-slate-200/60">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <div>
+                        <CardDescription className="uppercase tracking-widest text-[10px] font-bold">State</CardDescription>
+                        <CardTitle>현재 캘리브레이션 상태</CardTitle>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => void device.refreshCalibrationStatus()} disabled={!device.connected}>
+                        <RefreshCw className="w-3 h-3 mr-2" /> Refresh
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                      {device.snapshot.calStatus ? (
+                        <div className="bg-slate-950 rounded-xl p-4 font-mono text-[11px] text-slate-300 leading-relaxed shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] overflow-x-auto">
+                           <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
+                             <StatusBadge tone={device.snapshot.calStatus.hall1Ready ? 'success' : 'danger'}>H1 {device.snapshot.calStatus.hall1Ready ? 'Ready' : 'Not Ready'}</StatusBadge>
+                             <StatusBadge tone={device.snapshot.calStatus.hall2Ready ? 'success' : 'danger'}>H2 {device.snapshot.calStatus.hall2Ready ? 'Ready' : 'Not Ready'}</StatusBadge>
+                           </div>
+                           <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                             <div className="text-slate-500">H1 Idle: <span className="text-slate-200">{device.snapshot.calStatus.hall1Idle}</span></div>
+                             <div className="text-slate-500">H2 Idle: <span className="text-slate-200">{device.snapshot.calStatus.hall2Idle}</span></div>
+                             <div className="text-slate-500">H1 Press: <span className="text-slate-200">{device.snapshot.calStatus.hall1Press}</span></div>
+                             <div className="text-slate-500">H2 Press: <span className="text-slate-200">{device.snapshot.calStatus.hall2Press}</span></div>
+                             <div className="text-slate-500">H1 Thres: <span className="text-blue-300">{device.snapshot.calStatus.hall1Threshold}</span></div>
+                             <div className="text-slate-500">H2 Thres: <span className="text-blue-300">{device.snapshot.calStatus.hall2Threshold}</span></div>
+                             <div className="text-slate-500">H1 Rel: <span className="text-emerald-300">{device.snapshot.calStatus.hall1Release}</span></div>
+                             <div className="text-slate-500">H2 Rel: <span className="text-emerald-300">{device.snapshot.calStatus.hall2Release}</span></div>
+                           </div>
+                           <div className="mt-3 pt-2 border-t border-slate-800 text-slate-500 flex justify-between">
+                              <span>Active Cmd: {device.snapshot.calStatus.activeCommand}</span>
+                              <span>Samples: {device.snapshot.calStatus.sampleCount}/8</span>
+                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                      ) : (
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center">
+                          <Activity className="w-8 h-8 text-slate-300 dark:text-slate-700 mb-3" />
+                          <p className="text-sm text-slate-500 font-medium">기기를 연결하여 캘리브레이션 정보를 동기화하세요.</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
 
-                <Card className="shadow-sm border-slate-200/60">
+                <Card className="shadow-sm border-slate-200/60 max-h-min">
                   <CardHeader>
                     <CardDescription className="uppercase tracking-widest text-[10px] font-bold">Calibration</CardDescription>
-                    <CardTitle>센서 캘리브레이션</CardTitle>
+                    <CardTitle>센서 캘리브레이션 설정</CardTitle>
                   </CardHeader>
                   <CardContent className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    <SettingRow title="Trigger Threshold" description="최적화된 아날로그 입력 임계값 설정" control={<div className="w-[180px]"><Slider defaultValue={[50]} max={100} step={50} /><div className="flex justify-between mt-2 text-[10px] text-slate-500 font-medium"><span>Low</span><span>Normal</span><span>High</span></div></div>} />
-                    <SettingRow title="Calibration Workflow" description="Idle/Press 보정 액션" control={<Button variant="outline" size="sm">Coming Soon</Button>} />
+                    <SettingRow title="H1 (Left) Idle 보정" description="스위치를 누르지 않은 상태에서 기록합니다." control={<Button onClick={() => void device.sendCalibrationCommand(device.CAL_COMMANDS.hall1Idle)} disabled={!device.connected} variant="outline" size="sm" className="w-24">기록</Button>} />
+                    <SettingRow title="H1 (Left) Press 보정" description="스위치를 끝까지 누른 상태에서 기록합니다." control={<Button onClick={() => void device.sendCalibrationCommand(device.CAL_COMMANDS.hall1Press)} disabled={!device.connected} variant="secondary" size="sm" className="w-24 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100">기록</Button>} />
+                    <SettingRow title="H2 (Right) Idle 보정" description="스위치를 누르지 않은 상태에서 기록합니다." control={<Button onClick={() => void device.sendCalibrationCommand(device.CAL_COMMANDS.hall2Idle)} disabled={!device.connected} variant="outline" size="sm" className="w-24">기록</Button>} />
+                    <SettingRow title="H2 (Right) Press 보정" description="스위치를 끝까지 누른 상태에서 기록합니다." control={<Button onClick={() => void device.sendCalibrationCommand(device.CAL_COMMANDS.hall2Press)} disabled={!device.connected} variant="secondary" size="sm" className="w-24 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100">기록</Button>} />
                   </CardContent>
                 </Card>
               </div>

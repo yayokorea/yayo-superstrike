@@ -1,0 +1,196 @@
+name: Release firmware
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  NCS_VERSION: v3.1.0
+  ZEPHYR_SDK_VERSION: 0.17.4
+  BOARD: promicro_nrf52840
+  NCS_DIR: ncs
+  BUILD_DIR: build
+  RELEASE_DIR: release
+  APP_DIR: yayo-superstrike
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system deps
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git cmake ninja-build gperf ccache dfu-util \
+            device-tree-compiler wget xz-utils file make \
+            gcc gcc-multilib g++-multilib python3-dev \
+            python3-venv libsdl2-dev libmagic1
+
+      - name: Validate release version
+        id: version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          FILE_VERSION="$(grep -E '^(VERSION_MAJOR|VERSION_MINOR|PATCHLEVEL)\s*=' VERSION | cut -d= -f2 | tr -d ' ' | paste -sd '.')"
+
+          if [ -z "${FILE_VERSION}" ]; then
+            echo "Failed to read VERSION file"
+            exit 1
+          fi
+
+          if [ "${TAG_VERSION}" != "${FILE_VERSION}" ]; then
+            echo "Tag version ${TAG_VERSION} does not match VERSION ${FILE_VERSION}"
+            exit 1
+          fi
+
+          echo "tag=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "version=${FILE_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install west
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install west
+
+      - name: Cache Zephyr SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/zephyr-sdk-${{ env.ZEPHYR_SDK_VERSION }}
+          key: sdk-${{ runner.os }}-${{ env.ZEPHYR_SDK_VERSION }}
+
+      - name: Install Zephyr SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${{ env.ZEPHYR_SDK_VERSION }}/zephyr-sdk-${{ env.ZEPHYR_SDK_VERSION }}_linux-x86_64_minimal.tar.xz
+          tar xf zephyr-sdk-${{ env.ZEPHYR_SDK_VERSION }}_linux-x86_64_minimal.tar.xz -C ~/
+          ~/zephyr-sdk-${{ env.ZEPHYR_SDK_VERSION }}/setup.sh -c -t arm-zephyr-eabi
+
+      - name: Register SDK
+        run: |
+          ~/zephyr-sdk-${{ env.ZEPHYR_SDK_VERSION }}/setup.sh -c -t arm-zephyr-eabi
+
+      - name: Cache NCS workspace
+        id: cache-ncs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ncs/.west
+            ncs/bootloader
+            ncs/modules
+            ncs/nrf
+            ncs/nrfxlib
+            ncs/tools
+            ncs/zephyr
+          key: ncs-${{ runner.os }}-${{ env.NCS_VERSION }}
+
+      - name: Fetch NCS
+        if: steps.cache-ncs.outputs.cache-hit != 'true'
+        run: |
+          west init -m https://github.com/nrfconnect/sdk-nrf --mr ${NCS_VERSION} ${NCS_DIR}
+          cd ${NCS_DIR}
+          west update --narrow -o=--depth=1
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles(format('{0}/zephyr/scripts/requirements.txt', env.NCS_DIR)) }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Setup Zephyr env
+        run: |
+          cd ${NCS_DIR}
+          west zephyr-export
+          python -m pip install -r zephyr/scripts/requirements.txt
+
+      - name: Build firmware
+        run: |
+          cd ${NCS_DIR}
+          west build --sysbuild -p always \
+            -b ${BOARD} \
+            .. \
+            -d ../${BUILD_DIR}
+
+      - name: Prepare release assets
+        run: |
+          OTA_SRC="${BUILD_DIR}/${APP_DIR}/zephyr/zephyr.signed.bin"
+          FULL_HEX_SRC="${BUILD_DIR}/merged.hex"
+
+          if [ ! -f "${OTA_SRC}" ]; then
+            echo "Missing OTA image at ${OTA_SRC}"
+            exit 1
+          fi
+
+          if [ ! -f "${FULL_HEX_SRC}" ]; then
+            echo "Missing merged hex at ${FULL_HEX_SRC}"
+            exit 1
+          fi
+
+          mkdir -p "${RELEASE_DIR}"
+
+          OTA_NAME="superstrike-${GITHUB_REF_NAME}-ota.bin"
+          FULL_HEX_NAME="superstrike-${GITHUB_REF_NAME}-full.hex"
+          CHECKSUM_NAME="superstrike-${GITHUB_REF_NAME}-checksums.txt"
+          VERSIONED_MANIFEST_NAME="superstrike-${GITHUB_REF_NAME}-manifest.json"
+
+          cp "${OTA_SRC}" "${RELEASE_DIR}/${OTA_NAME}"
+          cp "${FULL_HEX_SRC}" "${RELEASE_DIR}/${FULL_HEX_NAME}"
+
+          OTA_SHA256="$(sha256sum "${RELEASE_DIR}/${OTA_NAME}" | cut -d' ' -f1)"
+          OTA_SIZE="$(stat -c%s "${RELEASE_DIR}/${OTA_NAME}")"
+
+          cat > "${RELEASE_DIR}/${CHECKSUM_NAME}" <<EOF
+          ${OTA_SHA256}  ${OTA_NAME}
+          $(sha256sum "${RELEASE_DIR}/${FULL_HEX_NAME}")
+          EOF
+
+          cat > "${RELEASE_DIR}/manifest.json" <<EOF
+          {
+            "product": "yayo-superstrike",
+            "channel": "stable",
+            "version": "${{ steps.version.outputs.version }}",
+            "tag": "${{ steps.version.outputs.tag }}",
+            "board": "${BOARD}",
+            "releasedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "asset": {
+              "name": "${OTA_NAME}",
+              "url": "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/${OTA_NAME}",
+              "sha256": "${OTA_SHA256}",
+              "size": ${OTA_SIZE}
+            },
+            "releaseNotesUrl": "https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
+          }
+          EOF
+
+          cp "${RELEASE_DIR}/manifest.json" "${RELEASE_DIR}/${VERSIONED_MANIFEST_NAME}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release/superstrike-${{ steps.version.outputs.tag }}-ota.bin
+            release/superstrike-${{ steps.version.outputs.tag }}-full.hex
+            release/superstrike-${{ steps.version.outputs.tag }}-checksums.txt
+            release/manifest.json
+            release/superstrike-${{ steps.version.outputs.tag }}-manifest.json

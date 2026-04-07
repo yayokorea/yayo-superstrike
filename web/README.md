@@ -25,4 +25,7 @@ npm run dev
 ## 참고
 
 - OTA는 `mcumgr-web` 스크립트를 런타임에 로드합니다.
+- GitHub Release OTA는 기본적으로 `yayokorea/yayo-superstrike` 저장소의 `releases/latest/download/manifest.json` 을 조회합니다.
+- 다른 저장소나 별도 manifest URL을 쓰려면 `VITE_GITHUB_REPO` 또는 `VITE_RELEASE_MANIFEST_URL` 을 설정하면 됩니다.
+- 정식 릴리즈는 `VERSION` 값을 먼저 올리고 해당 커밋에 `vX.Y.Z` 태그를 붙여 배포합니다.
 - 기존 `index.html`은 당장 제거하지 않고 병행 유지합니다.

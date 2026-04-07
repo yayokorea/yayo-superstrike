@@ -19,6 +19,7 @@ env:
   NCS_DIR: ncs
   BUILD_DIR: build
   RELEASE_DIR: release
+  PAGES_DIR: pages
   APP_DIR: yayo-superstrike
 
 jobs:
@@ -48,21 +49,32 @@ jobs:
       - name: Validate release version
         id: version
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_NAME="${GITHUB_REF_NAME}"
+          TAG_VERSION="${TAG_NAME#v}"
+          BASE_VERSION="${TAG_VERSION%%-*}"
           FILE_VERSION="$(grep -E '^(VERSION_MAJOR|VERSION_MINOR|PATCHLEVEL)\s*=' VERSION | cut -d= -f2 | tr -d ' ' | paste -sd '.')"
+
+          CHANNEL="stable"
+          MANIFEST_NAME="manifest.json"
+          if [[ "${TAG_VERSION}" == *-dev.* ]]; then
+            CHANNEL="dev"
+            MANIFEST_NAME="manifest-dev.json"
+          fi
 
           if [ -z "${FILE_VERSION}" ]; then
             echo "Failed to read VERSION file"
             exit 1
           fi
 
-          if [ "${TAG_VERSION}" != "${FILE_VERSION}" ]; then
+          if [ "${BASE_VERSION}" != "${FILE_VERSION}" ]; then
             echo "Tag version ${TAG_VERSION} does not match VERSION ${FILE_VERSION}"
             exit 1
           fi
 
-          echo "tag=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG_NAME}" >> "${GITHUB_OUTPUT}"
           echo "version=${FILE_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "channel=${CHANNEL}" >> "${GITHUB_OUTPUT}"
+          echo "manifest_name=${MANIFEST_NAME}" >> "${GITHUB_OUTPUT}"
 
       - name: Install west
         run: |
@@ -134,6 +146,8 @@ jobs:
         run: |
           OTA_SRC="${BUILD_DIR}/${APP_DIR}/zephyr/zephyr.signed.bin"
           FULL_HEX_SRC="${BUILD_DIR}/merged.hex"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          PAGES_BASE_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/ota"
 
           if [ ! -f "${OTA_SRC}" ]; then
             echo "Missing OTA image at ${OTA_SRC}"
@@ -146,6 +160,8 @@ jobs:
           fi
 
           mkdir -p "${RELEASE_DIR}"
+          mkdir -p "${PAGES_DIR}/ota"
+          touch "${PAGES_DIR}/.nojekyll"
 
           OTA_NAME="superstrike-${GITHUB_REF_NAME}-ota.bin"
           FULL_HEX_NAME="superstrike-${GITHUB_REF_NAME}-full.hex"
@@ -154,6 +170,8 @@ jobs:
 
           cp "${OTA_SRC}" "${RELEASE_DIR}/${OTA_NAME}"
           cp "${FULL_HEX_SRC}" "${RELEASE_DIR}/${FULL_HEX_NAME}"
+          cp "${OTA_SRC}" "${PAGES_DIR}/ota/${OTA_NAME}"
+          cp "${FULL_HEX_SRC}" "${PAGES_DIR}/ota/${FULL_HEX_NAME}"
 
           OTA_SHA256="$(sha256sum "${RELEASE_DIR}/${OTA_NAME}" | cut -d' ' -f1)"
           OTA_SIZE="$(stat -c%s "${RELEASE_DIR}/${OTA_NAME}")"
@@ -166,14 +184,14 @@ jobs:
           cat > "${RELEASE_DIR}/manifest.json" <<EOF
           {
             "product": "yayo-superstrike",
-            "channel": "stable",
+            "channel": "${{ steps.version.outputs.channel }}",
             "version": "${{ steps.version.outputs.version }}",
             "tag": "${{ steps.version.outputs.tag }}",
             "board": "${BOARD}",
             "releasedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "asset": {
               "name": "${OTA_NAME}",
-              "url": "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/${OTA_NAME}",
+              "url": "${PAGES_BASE_URL}/${OTA_NAME}",
               "sha256": "${OTA_SHA256}",
               "size": ${OTA_SIZE}
             },
@@ -182,6 +200,14 @@ jobs:
           EOF
 
           cp "${RELEASE_DIR}/manifest.json" "${RELEASE_DIR}/${VERSIONED_MANIFEST_NAME}"
+          cp "${RELEASE_DIR}/manifest.json" "${PAGES_DIR}/ota/${{ steps.version.outputs.manifest_name }}"
+          cp "${RELEASE_DIR}/${CHECKSUM_NAME}" "${PAGES_DIR}/ota/${CHECKSUM_NAME}"
+          cp "${RELEASE_DIR}/${VERSIONED_MANIFEST_NAME}" "${PAGES_DIR}/ota/${VERSIONED_MANIFEST_NAME}"
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -194,3 +220,16 @@ jobs:
             release/superstrike-${{ steps.version.outputs.tag }}-checksums.txt
             release/manifest.json
             release/superstrike-${{ steps.version.outputs.tag }}-manifest.json
+
+  deploy-pages:
+    needs: release
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

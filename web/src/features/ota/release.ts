@@ -3,6 +3,7 @@ export type FirmwareReleaseManifest = {
   channel: string;
   version: string;
   tag: string;
+  imageVersion?: string;
   board: string;
   releasedAt: string;
   asset: {
@@ -23,14 +24,18 @@ function getDefaultPagesBaseUrl(repository: string) {
 }
 
 function stripVersionPrefix(version: string) {
-  return version.trim().replace(/^v/i, '').split('+')[0].split('-')[0];
+  return version.trim().replace(/^v/i, '');
 }
 
 function parseVersion(version: string) {
   const normalized = stripVersionPrefix(version);
-  const [major = '0', minor = '0', patch = '0'] = normalized.split('.');
+  const [core, build = '0'] = normalized.split('+');
+  const [major = '0', minor = '0', patch = '0'] = core.split('-')[0].split('.');
 
-  return [major, minor, patch].map((part) => Number.parseInt(part, 10));
+  return {
+    core: [major, minor, patch].map((part) => Number.parseInt(part, 10)),
+    build: Number.parseInt(build, 10) || 0,
+  };
 }
 
 export function compareSemver(left: string, right: string) {
@@ -38,13 +43,13 @@ export function compareSemver(left: string, right: string) {
   const rightParts = parseVersion(right);
 
   for (let index = 0; index < 3; index += 1) {
-    const delta = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    const delta = (leftParts.core[index] ?? 0) - (rightParts.core[index] ?? 0);
     if (delta !== 0) {
       return delta;
     }
   }
 
-  return 0;
+  return leftParts.build - rightParts.build;
 }
 
 export function getReleaseManifestUrl(channel: ReleaseChannel = 'stable') {

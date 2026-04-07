@@ -27,6 +27,7 @@ npm run dev
 - OTA는 `mcumgr-web` 스크립트를 런타임에 로드합니다.
 - 릴리즈 태그를 만들면 GitHub Release asset 업로드와 GitHub Pages OTA 배포가 함께 수행됩니다.
 - 안정 배포 태그는 `vX.Y.Z`, 개발 배포 태그는 `vX.Y.Z-dev.N` 형식을 사용합니다.
+- MCUboot 이미지 버전은 stable에서 `X.Y.Z+65535`, dev에서 `X.Y.Z+N` 규칙으로 생성됩니다.
 - 웹 OTA는 기본적으로 stable 채널의 `https://yayokorea.github.io/yayo-superstrike/ota/manifest.json` 을 조회합니다.
 - Firmware 화면에서 stable/dev 채널을 직접 전환할 수 있고, dev 선택 시 `manifest-dev.json` 을 조회합니다.
 - 다른 저장소나 별도 OTA 경로를 쓰려면 `VITE_GITHUB_REPO`, `VITE_OTA_BASE_URL`, `VITE_RELEASE_MANIFEST_URL` 중 하나를 설정하면 됩니다.

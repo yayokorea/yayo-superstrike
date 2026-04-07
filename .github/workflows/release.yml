@@ -56,9 +56,16 @@ jobs:
 
           CHANNEL="stable"
           MANIFEST_NAME="manifest.json"
+          IMAGE_VERSION="${BASE_VERSION}+65535"
           if [[ "${TAG_VERSION}" == *-dev.* ]]; then
+            DEV_BUILD_NUMBER="${TAG_VERSION##*-dev.}"
+            if ! [[ "${DEV_BUILD_NUMBER}" =~ ^[0-9]+$ ]]; then
+              echo "Invalid dev tag format: ${TAG_NAME}"
+              exit 1
+            fi
             CHANNEL="dev"
             MANIFEST_NAME="manifest-dev.json"
+            IMAGE_VERSION="${BASE_VERSION}+${DEV_BUILD_NUMBER}"
           fi
 
           if [ -z "${FILE_VERSION}" ]; then
@@ -75,6 +82,7 @@ jobs:
           echo "version=${FILE_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "channel=${CHANNEL}" >> "${GITHUB_OUTPUT}"
           echo "manifest_name=${MANIFEST_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "image_version=${IMAGE_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Install west
         run: |
@@ -136,11 +144,17 @@ jobs:
 
       - name: Build firmware
         run: |
+          cat > ${GITHUB_WORKSPACE}/release-version.conf <<EOF
+          CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION="${{ steps.version.outputs.image_version }}"
+          EOF
+
           cd ${NCS_DIR}
           west build --sysbuild -p always \
             -b ${BOARD} \
             .. \
-            -d ../${BUILD_DIR}
+            -d ../${BUILD_DIR} \
+            -- \
+            -DEXTRA_CONF_FILE=${GITHUB_WORKSPACE}/release-version.conf
 
       - name: Prepare release assets
         run: |
@@ -187,6 +201,7 @@ jobs:
             "channel": "${{ steps.version.outputs.channel }}",
             "version": "${{ steps.version.outputs.version }}",
             "tag": "${{ steps.version.outputs.tag }}",
+            "imageVersion": "${{ steps.version.outputs.image_version }}",
             "board": "${BOARD}",
             "releasedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "asset": {

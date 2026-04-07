@@ -112,6 +112,22 @@ export function useMcuManager(log: Logger, bluetoothDevice: BluetoothDevice | nu
     setStatusMessage('OTA transport disconnected');
   };
 
+  const prepareImage = async (nextFile: File, buffer?: ArrayBuffer) => {
+    const nextBuffer = buffer ?? await nextFile.arrayBuffer();
+    const nextInfo = await client.imageInfo(nextBuffer);
+
+    setFile(nextFile);
+    setFileBuffer(nextBuffer);
+    setImageInfo(nextInfo);
+    setUploadState('idle');
+    setProgress(0);
+    setError(null);
+    setStatusMessage(`Image ${nextInfo.version} validated`);
+    log('OTA', `Validated image ${nextInfo.version}`, 'success');
+
+    return nextBuffer;
+  };
+
   const selectFile = async (nextFile: File | null) => {
     setFile(nextFile);
     setFileBuffer(null);
@@ -125,14 +141,7 @@ export function useMcuManager(log: Logger, bluetoothDevice: BluetoothDevice | nu
     }
 
     try {
-      const buffer = await nextFile.arrayBuffer();
-      const nextInfo = await client.imageInfo(buffer);
-      setFileBuffer(buffer);
-      setImageInfo(nextInfo);
-      setUploadState('idle');
-      setProgress(0);
-      setStatusMessage(`Image ${nextInfo.version} validated`);
-      log('OTA', `Validated image ${nextInfo.version}`, 'success');
+      await prepareImage(nextFile);
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : 'Image validation failed';
       setError(message);
@@ -140,6 +149,14 @@ export function useMcuManager(log: Logger, bluetoothDevice: BluetoothDevice | nu
       setStatusMessage(message);
       log('OTA', message, 'error');
     }
+  };
+
+  const selectRemoteImage = async (name: string, buffer: ArrayBuffer) => {
+    const nextFile = new File([buffer], name, {
+      type: 'application/octet-stream',
+    });
+
+    await prepareImage(nextFile, buffer);
   };
 
   const refreshImageState = async () => {
@@ -168,6 +185,36 @@ export function useMcuManager(log: Logger, bluetoothDevice: BluetoothDevice | nu
     setStatusMessage('Uploading firmware image');
     try {
       await client.upload(fileBuffer, (percentage) => {
+        setProgress(percentage);
+        setStatusMessage(`Uploading firmware image (${percentage}%)`);
+      });
+      setProgress(100);
+      setUploadState('completed');
+      setStatusMessage('Upload completed successfully');
+      log('OTA', 'Firmware upload finished', 'success');
+      await refreshImageState();
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : 'Upload failed';
+      setError(message);
+      setUploadState('error');
+      setStatusMessage(message);
+      log('OTA', message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadPreparedImage = async (name: string, buffer: ArrayBuffer) => {
+    const nextBuffer = await prepareImage(new File([buffer], name, {
+      type: 'application/octet-stream',
+    }), buffer);
+
+    setBusy(true);
+    setProgress(0);
+    setUploadState('uploading');
+    setStatusMessage('Uploading firmware image');
+    try {
+      await client.upload(nextBuffer, (percentage) => {
         setProgress(percentage);
         setStatusMessage(`Uploading firmware image (${percentage}%)`);
       });
@@ -264,8 +311,10 @@ export function useMcuManager(log: Logger, bluetoothDevice: BluetoothDevice | nu
     connect,
     disconnect,
     selectFile,
+    selectRemoteImage,
     refreshImageState,
     upload,
+    uploadPreparedImage,
     test,
     confirm,
     reset,

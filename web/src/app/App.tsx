@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useCustomDevice } from '@/features/device/useCustomDevice';
 import { useMcuManager } from '@/features/ota/useMcuManager';
+import { compareSemver, downloadReleaseAsset, fetchLatestFirmwareRelease, getReleaseManifestUrl, type FirmwareReleaseManifest } from '@/features/ota/release';
 import type { LogEntry } from '@/features/logs/types';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import {
   Power,
   Bluetooth,
   Upload,
+  Download,
   PlayCircle,
   CheckCircle,
   AlertCircle,
@@ -85,6 +87,10 @@ export function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeSection, setActiveSection] = useState<SectionId>('device');
   const [showLogs, setShowLogs] = useState(false);
+  const [releaseInfo, setReleaseInfo] = useState<FirmwareReleaseManifest | null>(null);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releaseStatus, setReleaseStatus] = useState('GitHub Release에서 최신 OTA 정보를 아직 확인하지 않았습니다.');
+  const [releaseError, setReleaseError] = useState<string | null>(null);
 
   const appendLog = useCallback((scope: string, message: unknown, level: LogEntry['level'] = 'info') => {
     setLogs((current) => [
@@ -104,9 +110,80 @@ export function App() {
 
   const activeSlot = useMemo(() => ota.imageState.find((image) => image.active) ?? null, [ota.imageState]);
   const selectedSection = SECTIONS.find((section) => section.id === activeSection)!;
+  const currentVersion = activeSlot?.version ?? null;
+  const updateAvailable = releaseInfo !== null && (!currentVersion || compareSemver(releaseInfo.version, currentVersion) > 0);
   
   const otaStatusTone = ota.uploadState === 'completed' ? 'success' : ota.uploadState === 'error' ? 'danger' : ota.uploadState === 'uploading' ? 'warning' : ota.connected ? 'success' : 'warning';
   const otaStatusLabel = ota.uploadState === 'completed' ? 'Upload Complete' : ota.uploadState === 'error' ? 'Upload Error' : ota.uploadState === 'uploading' ? 'Uploading' : ota.connected ? 'Connected' : 'Disconnected';
+
+  const loadLatestRelease = useCallback(async () => {
+    setReleaseBusy(true);
+    setReleaseError(null);
+    setReleaseStatus('GitHub Release에서 최신 OTA manifest를 확인하는 중입니다.');
+
+    try {
+      const manifest = await fetchLatestFirmwareRelease();
+      setReleaseInfo(manifest);
+
+      const nextStatus = currentVersion
+        ? compareSemver(manifest.version, currentVersion) > 0
+          ? `새 펌웨어 ${manifest.version} 이(가) 있습니다.`
+          : `현재 펌웨어 ${currentVersion} 가 최신입니다.`
+        : `최신 펌웨어 ${manifest.version} 을(를) 찾았습니다.`;
+
+      setReleaseStatus(nextStatus);
+      appendLog('Release', `Loaded ${manifest.tag} from ${getReleaseManifestUrl()}`, 'success');
+      return manifest;
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : 'Failed to load latest release';
+      setReleaseError(message);
+      setReleaseStatus(message);
+      appendLog('Release', message, 'error');
+      return null;
+    } finally {
+      setReleaseBusy(false);
+    }
+  }, [appendLog, currentVersion]);
+
+  const updateFromLatestRelease = useCallback(async () => {
+    if (!ota.connected) {
+      const message = 'OTA 연결 후에만 GitHub Release 업데이트를 시작할 수 있습니다.';
+      setReleaseError(message);
+      setReleaseStatus(message);
+      appendLog('Release', message, 'warning');
+      return;
+    }
+
+    setReleaseBusy(true);
+    setReleaseError(null);
+    setReleaseStatus('최신 릴리즈 정보를 확인하는 중입니다.');
+
+    try {
+      const manifest = releaseInfo ?? await fetchLatestFirmwareRelease();
+      setReleaseInfo(manifest);
+
+      if (currentVersion && compareSemver(manifest.version, currentVersion) <= 0) {
+        const message = `현재 펌웨어 ${currentVersion} 가 이미 최신입니다.`;
+        setReleaseStatus(message);
+        appendLog('Release', message, 'info');
+        return;
+      }
+
+      setReleaseStatus(`${manifest.asset.name} 다운로드 중입니다.`);
+      const buffer = await downloadReleaseAsset(manifest);
+      setReleaseStatus(`${manifest.asset.name} 업로드를 시작합니다.`);
+      await ota.uploadPreparedImage(manifest.asset.name, buffer);
+      setReleaseStatus(`GitHub Release ${manifest.version} 업로드가 완료되었습니다.`);
+      appendLog('Release', `Uploaded ${manifest.asset.name} from GitHub Release`, 'success');
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : 'Release OTA update failed';
+      setReleaseError(message);
+      setReleaseStatus(message);
+      appendLog('Release', message, 'error');
+    } finally {
+      setReleaseBusy(false);
+    }
+  }, [appendLog, currentVersion, ota, releaseInfo]);
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-[#020817] font-sans selection:bg-blue-200 selection:text-blue-900 relative">
@@ -421,6 +498,40 @@ export function App() {
                     />
 
                     <div className="bg-slate-50/50 dark:bg-slate-900 border rounded-2xl p-6 shadow-inherit">
+                      <div className="mb-6 rounded-2xl border bg-white dark:bg-slate-950 p-4 space-y-4">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">GitHub Release OTA</h3>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 break-all">Manifest: {getReleaseManifestUrl()}</p>
+                          </div>
+                          <Badge variant="secondary" className="font-mono w-fit">{releaseInfo?.tag ?? 'No release loaded'}</Badge>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border bg-slate-50 dark:bg-slate-900 px-4 py-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Current</div>
+                            <div className="mt-1 font-mono text-sm text-slate-800 dark:text-slate-100">{currentVersion ?? '--'}</div>
+                          </div>
+                          <div className="rounded-xl border bg-slate-50 dark:bg-slate-900 px-4 py-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Latest</div>
+                            <div className="mt-1 font-mono text-sm text-slate-800 dark:text-slate-100">{releaseInfo?.version ?? '--'}</div>
+                          </div>
+                        </div>
+
+                        <div className={`rounded-xl border px-4 py-3 text-sm ${releaseError ? 'border-red-200 bg-red-50 text-red-800' : updateAvailable ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                          {releaseStatus}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                          <Button variant="outline" onClick={() => void loadLatestRelease()} disabled={releaseBusy || ota.busy}>
+                            <RefreshCw className={`w-4 h-4 mr-2 ${releaseBusy ? 'animate-spin' : ''}`} /> Check latest
+                          </Button>
+                          <Button onClick={() => void updateFromLatestRelease()} disabled={!ota.connected || releaseBusy || ota.busy} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+                            <Download className="w-4 h-4 mr-2" /> Download & Upload Latest
+                          </Button>
+                        </div>
+                      </div>
+
                       <label className="block text-sm font-semibold mb-3 text-slate-800 dark:text-slate-200" htmlFor="firmware-file">펌웨어 이미지 업로드</label>
                       <div className="relative">
                         <input

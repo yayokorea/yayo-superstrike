@@ -15,7 +15,7 @@ export type FirmwareReleaseManifest = {
 };
 
 const DEFAULT_GITHUB_REPO = 'yayokorea/yayo-superstrike';
-const DEFAULT_RELEASE_CHANNEL = 'stable';
+export type ReleaseChannel = 'stable' | 'dev';
 
 function getDefaultPagesBaseUrl(repository: string) {
   const [owner, name] = repository.split('/');
@@ -47,12 +47,7 @@ export function compareSemver(left: string, right: string) {
   return 0;
 }
 
-export function getReleaseChannel() {
-  const explicitChannel = import.meta.env.VITE_RELEASE_CHANNEL?.trim().toLowerCase();
-  return explicitChannel === 'dev' ? 'dev' : DEFAULT_RELEASE_CHANNEL;
-}
-
-export function getReleaseManifestUrl() {
+export function getReleaseManifestUrl(channel: ReleaseChannel = 'stable') {
   const explicitUrl = import.meta.env.VITE_RELEASE_MANIFEST_URL?.trim();
   if (explicitUrl) {
     return explicitUrl;
@@ -61,12 +56,12 @@ export function getReleaseManifestUrl() {
   const repository = import.meta.env.VITE_GITHUB_REPO?.trim() || DEFAULT_GITHUB_REPO;
   const explicitBaseUrl = import.meta.env.VITE_OTA_BASE_URL?.trim();
   const baseUrl = explicitBaseUrl || getDefaultPagesBaseUrl(repository);
-  const manifestName = getReleaseChannel() === 'dev' ? 'manifest-dev.json' : 'manifest.json';
+  const manifestName = channel === 'dev' ? 'manifest-dev.json' : 'manifest.json';
   return `${baseUrl.replace(/\/$/, '')}/${manifestName}`;
 }
 
-export async function fetchLatestFirmwareRelease(): Promise<FirmwareReleaseManifest> {
-  const response = await fetch(getReleaseManifestUrl(), {
+export async function fetchLatestFirmwareRelease(channel: ReleaseChannel = 'stable'): Promise<FirmwareReleaseManifest> {
+  const response = await fetch(getReleaseManifestUrl(channel), {
     cache: 'no-store',
   });
 

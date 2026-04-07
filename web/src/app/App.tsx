@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useCustomDevice } from '@/features/device/useCustomDevice';
 import { useMcuManager } from '@/features/ota/useMcuManager';
-import { compareSemver, downloadReleaseAsset, fetchLatestFirmwareRelease, getReleaseManifestUrl, type FirmwareReleaseManifest } from '@/features/ota/release';
+import { compareSemver, downloadReleaseAsset, fetchLatestFirmwareRelease, getReleaseManifestUrl, type FirmwareReleaseManifest, type ReleaseChannel } from '@/features/ota/release';
 import type { LogEntry } from '@/features/logs/types';
 
 import { Button } from '@/components/ui/button';
@@ -87,6 +87,7 @@ export function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeSection, setActiveSection] = useState<SectionId>('device');
   const [showLogs, setShowLogs] = useState(false);
+  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>('stable');
   const [releaseInfo, setReleaseInfo] = useState<FirmwareReleaseManifest | null>(null);
   const [releaseBusy, setReleaseBusy] = useState(false);
   const [releaseStatus, setReleaseStatus] = useState('GitHub Release에서 최신 OTA 정보를 아직 확인하지 않았습니다.');
@@ -112,6 +113,7 @@ export function App() {
   const selectedSection = SECTIONS.find((section) => section.id === activeSection)!;
   const currentVersion = activeSlot?.version ?? null;
   const updateAvailable = releaseInfo !== null && (!currentVersion || compareSemver(releaseInfo.version, currentVersion) > 0);
+  const manifestUrl = getReleaseManifestUrl(releaseChannel);
   
   const otaStatusTone = ota.uploadState === 'completed' ? 'success' : ota.uploadState === 'error' ? 'danger' : ota.uploadState === 'uploading' ? 'warning' : ota.connected ? 'success' : 'warning';
   const otaStatusLabel = ota.uploadState === 'completed' ? 'Upload Complete' : ota.uploadState === 'error' ? 'Upload Error' : ota.uploadState === 'uploading' ? 'Uploading' : ota.connected ? 'Connected' : 'Disconnected';
@@ -119,20 +121,20 @@ export function App() {
   const loadLatestRelease = useCallback(async () => {
     setReleaseBusy(true);
     setReleaseError(null);
-    setReleaseStatus('GitHub Release에서 최신 OTA manifest를 확인하는 중입니다.');
+    setReleaseStatus(`${releaseChannel} 채널의 최신 OTA manifest를 확인하는 중입니다.`);
 
     try {
-      const manifest = await fetchLatestFirmwareRelease();
+      const manifest = await fetchLatestFirmwareRelease(releaseChannel);
       setReleaseInfo(manifest);
 
       const nextStatus = currentVersion
         ? compareSemver(manifest.version, currentVersion) > 0
-          ? `새 펌웨어 ${manifest.version} 이(가) 있습니다.`
-          : `현재 펌웨어 ${currentVersion} 가 최신입니다.`
-        : `최신 펌웨어 ${manifest.version} 을(를) 찾았습니다.`;
+          ? `${releaseChannel} 채널에 새 펌웨어 ${manifest.version} 이(가) 있습니다.`
+          : `현재 펌웨어 ${currentVersion} 가 ${releaseChannel} 채널 최신입니다.`
+        : `${releaseChannel} 채널의 최신 펌웨어 ${manifest.version} 을(를) 찾았습니다.`;
 
       setReleaseStatus(nextStatus);
-      appendLog('Release', `Loaded ${manifest.tag} from ${getReleaseManifestUrl()}`, 'success');
+      appendLog('Release', `Loaded ${manifest.tag} from ${manifestUrl}`, 'success');
       return manifest;
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : 'Failed to load latest release';
@@ -143,7 +145,7 @@ export function App() {
     } finally {
       setReleaseBusy(false);
     }
-  }, [appendLog, currentVersion]);
+  }, [appendLog, currentVersion, manifestUrl, releaseChannel]);
 
   const updateFromLatestRelease = useCallback(async () => {
     if (!ota.connected) {
@@ -156,14 +158,14 @@ export function App() {
 
     setReleaseBusy(true);
     setReleaseError(null);
-    setReleaseStatus('최신 릴리즈 정보를 확인하는 중입니다.');
+    setReleaseStatus(`${releaseChannel} 채널의 최신 릴리즈 정보를 확인하는 중입니다.`);
 
     try {
-      const manifest = releaseInfo ?? await fetchLatestFirmwareRelease();
+      const manifest = releaseInfo?.channel === releaseChannel ? releaseInfo : await fetchLatestFirmwareRelease(releaseChannel);
       setReleaseInfo(manifest);
 
       if (currentVersion && compareSemver(manifest.version, currentVersion) <= 0) {
-        const message = `현재 펌웨어 ${currentVersion} 가 이미 최신입니다.`;
+        const message = `현재 펌웨어 ${currentVersion} 가 ${releaseChannel} 채널 기준 이미 최신입니다.`;
         setReleaseStatus(message);
         appendLog('Release', message, 'info');
         return;
@@ -173,8 +175,8 @@ export function App() {
       const buffer = await downloadReleaseAsset(manifest);
       setReleaseStatus(`${manifest.asset.name} 업로드를 시작합니다.`);
       await ota.uploadPreparedImage(manifest.asset.name, buffer);
-      setReleaseStatus(`GitHub Release ${manifest.version} 업로드가 완료되었습니다.`);
-      appendLog('Release', `Uploaded ${manifest.asset.name} from GitHub Release`, 'success');
+      setReleaseStatus(`${releaseChannel} 채널의 GitHub Release ${manifest.version} 업로드가 완료되었습니다.`);
+      appendLog('Release', `Uploaded ${manifest.asset.name} from ${releaseChannel} channel`, 'success');
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : 'Release OTA update failed';
       setReleaseError(message);
@@ -183,7 +185,14 @@ export function App() {
     } finally {
       setReleaseBusy(false);
     }
-  }, [appendLog, currentVersion, ota, releaseInfo]);
+  }, [appendLog, currentVersion, ota, releaseChannel, releaseInfo]);
+
+  const changeReleaseChannel = useCallback((nextChannel: ReleaseChannel) => {
+    setReleaseChannel(nextChannel);
+    setReleaseInfo(null);
+    setReleaseError(null);
+    setReleaseStatus(`${nextChannel} 채널을 선택했습니다. 최신 OTA 정보를 다시 확인하세요.`);
+  }, []);
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-[#020817] font-sans selection:bg-blue-200 selection:text-blue-900 relative">
@@ -502,9 +511,19 @@ export function App() {
                         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                           <div>
                             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">GitHub Release OTA</h3>
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 break-all">Manifest: {getReleaseManifestUrl()}</p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 break-all">Manifest: {manifestUrl}</p>
                           </div>
                           <Badge variant="secondary" className="font-mono w-fit">{releaseInfo?.tag ?? 'No release loaded'}</Badge>
+                        </div>
+
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Channel</span>
+                          <Tabs value={releaseChannel} onValueChange={(value) => changeReleaseChannel(value as ReleaseChannel)} className="w-auto">
+                            <TabsList className="grid w-[180px] grid-cols-2">
+                              <TabsTrigger value="stable">Stable</TabsTrigger>
+                              <TabsTrigger value="dev">Dev</TabsTrigger>
+                            </TabsList>
+                          </Tabs>
                         </div>
 
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -700,4 +719,3 @@ export function App() {
     </div>
   );
 }
- 

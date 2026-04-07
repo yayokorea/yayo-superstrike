@@ -28,7 +28,7 @@ npm run dev
 - 릴리즈 태그를 만들면 GitHub Release asset 업로드와 GitHub Pages OTA 배포가 함께 수행됩니다.
 - 안정 배포 태그는 `vX.Y.Z`, 개발 배포 태그는 `vX.Y.Z-dev.N` 형식을 사용합니다.
 - 웹 OTA는 기본적으로 stable 채널의 `https://yayokorea.github.io/yayo-superstrike/ota/manifest.json` 을 조회합니다.
-- dev 채널을 보려면 `VITE_RELEASE_CHANNEL=dev` 를 설정하면 `manifest-dev.json` 을 조회합니다.
+- Firmware 화면에서 stable/dev 채널을 직접 전환할 수 있고, dev 선택 시 `manifest-dev.json` 을 조회합니다.
 - 다른 저장소나 별도 OTA 경로를 쓰려면 `VITE_GITHUB_REPO`, `VITE_OTA_BASE_URL`, `VITE_RELEASE_MANIFEST_URL` 중 하나를 설정하면 됩니다.
 - 정식 릴리즈는 `VERSION` 값을 먼저 올리고 해당 커밋에 `vX.Y.Z` 태그를 붙여 배포합니다.
 - 기존 `index.html`은 당장 제거하지 않고 병행 유지합니다.

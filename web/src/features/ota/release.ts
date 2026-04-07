@@ -15,6 +15,12 @@ export type FirmwareReleaseManifest = {
 };
 
 const DEFAULT_GITHUB_REPO = 'yayokorea/yayo-superstrike';
+const DEFAULT_RELEASE_CHANNEL = 'stable';
+
+function getDefaultPagesBaseUrl(repository: string) {
+  const [owner, name] = repository.split('/');
+  return `https://${owner}.github.io/${name}/ota`;
+}
 
 function stripVersionPrefix(version: string) {
   return version.trim().replace(/^v/i, '').split('+')[0].split('-')[0];
@@ -41,6 +47,11 @@ export function compareSemver(left: string, right: string) {
   return 0;
 }
 
+export function getReleaseChannel() {
+  const explicitChannel = import.meta.env.VITE_RELEASE_CHANNEL?.trim().toLowerCase();
+  return explicitChannel === 'dev' ? 'dev' : DEFAULT_RELEASE_CHANNEL;
+}
+
 export function getReleaseManifestUrl() {
   const explicitUrl = import.meta.env.VITE_RELEASE_MANIFEST_URL?.trim();
   if (explicitUrl) {
@@ -48,7 +59,10 @@ export function getReleaseManifestUrl() {
   }
 
   const repository = import.meta.env.VITE_GITHUB_REPO?.trim() || DEFAULT_GITHUB_REPO;
-  return `https://github.com/${repository}/releases/latest/download/manifest.json`;
+  const explicitBaseUrl = import.meta.env.VITE_OTA_BASE_URL?.trim();
+  const baseUrl = explicitBaseUrl || getDefaultPagesBaseUrl(repository);
+  const manifestName = getReleaseChannel() === 'dev' ? 'manifest-dev.json' : 'manifest.json';
+  return `${baseUrl.replace(/\/$/, '')}/${manifestName}`;
 }
 
 export async function fetchLatestFirmwareRelease(): Promise<FirmwareReleaseManifest> {

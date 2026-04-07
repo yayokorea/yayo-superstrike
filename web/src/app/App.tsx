@@ -112,7 +112,8 @@ export function App() {
   const activeSlot = useMemo(() => ota.imageState.find((image) => image.active) ?? null, [ota.imageState]);
   const selectedSection = SECTIONS.find((section) => section.id === activeSection)!;
   const currentVersion = activeSlot?.version ?? null;
-  const updateAvailable = releaseInfo !== null && (!currentVersion || compareSemver(releaseInfo.version, currentVersion) > 0);
+  const latestVersion = releaseInfo?.imageVersion ?? releaseInfo?.version ?? null;
+  const updateAvailable = latestVersion !== null && (!currentVersion || compareSemver(latestVersion, currentVersion) > 0);
   const manifestUrl = getReleaseManifestUrl(releaseChannel);
   
   const otaStatusTone = ota.uploadState === 'completed' ? 'success' : ota.uploadState === 'error' ? 'danger' : ota.uploadState === 'uploading' ? 'warning' : ota.connected ? 'success' : 'warning';
@@ -127,11 +128,13 @@ export function App() {
       const manifest = await fetchLatestFirmwareRelease(releaseChannel);
       setReleaseInfo(manifest);
 
+      const nextVersion = manifest.imageVersion ?? manifest.version;
+
       const nextStatus = currentVersion
-        ? compareSemver(manifest.version, currentVersion) > 0
-          ? `${releaseChannel} 채널에 새 펌웨어 ${manifest.version} 이(가) 있습니다.`
+        ? compareSemver(nextVersion, currentVersion) > 0
+          ? `${releaseChannel} 채널에 새 펌웨어 ${nextVersion} 이(가) 있습니다.`
           : `현재 펌웨어 ${currentVersion} 가 ${releaseChannel} 채널 최신입니다.`
-        : `${releaseChannel} 채널의 최신 펌웨어 ${manifest.version} 을(를) 찾았습니다.`;
+        : `${releaseChannel} 채널의 최신 펌웨어 ${nextVersion} 을(를) 찾았습니다.`;
 
       setReleaseStatus(nextStatus);
       appendLog('Release', `Loaded ${manifest.tag} from ${manifestUrl}`, 'success');
@@ -164,7 +167,9 @@ export function App() {
       const manifest = releaseInfo?.channel === releaseChannel ? releaseInfo : await fetchLatestFirmwareRelease(releaseChannel);
       setReleaseInfo(manifest);
 
-      if (currentVersion && compareSemver(manifest.version, currentVersion) <= 0) {
+      const nextVersion = manifest.imageVersion ?? manifest.version;
+
+      if (currentVersion && compareSemver(nextVersion, currentVersion) <= 0) {
         const message = `현재 펌웨어 ${currentVersion} 가 ${releaseChannel} 채널 기준 이미 최신입니다.`;
         setReleaseStatus(message);
         appendLog('Release', message, 'info');
@@ -175,7 +180,7 @@ export function App() {
       const buffer = await downloadReleaseAsset(manifest);
       setReleaseStatus(`${manifest.asset.name} 업로드를 시작합니다.`);
       await ota.uploadPreparedImage(manifest.asset.name, buffer);
-      setReleaseStatus(`${releaseChannel} 채널의 GitHub Release ${manifest.version} 업로드가 완료되었습니다.`);
+      setReleaseStatus(`${releaseChannel} 채널의 GitHub Release ${nextVersion} 업로드가 완료되었습니다.`);
       appendLog('Release', `Uploaded ${manifest.asset.name} from ${releaseChannel} channel`, 'success');
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : 'Release OTA update failed';
@@ -533,7 +538,7 @@ export function App() {
                           </div>
                           <div className="rounded-xl border bg-slate-50 dark:bg-slate-900 px-4 py-3">
                             <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Latest</div>
-                            <div className="mt-1 font-mono text-sm text-slate-800 dark:text-slate-100">{releaseInfo?.version ?? '--'}</div>
+                            <div className="mt-1 font-mono text-sm text-slate-800 dark:text-slate-100">{latestVersion ?? '--'}</div>
                           </div>
                         </div>
 
